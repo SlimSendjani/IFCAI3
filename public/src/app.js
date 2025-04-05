@@ -5,6 +5,10 @@
 // Nous utiliserons les bibliothèques chargées via des balises script dans le HTML
 // Les variables globales seront disponibles: pipeline, IfcAPI, IFC
 
+// Import des modules nécessaires
+import { getExtractedParamsFromCache, storeExtractedParamsInCache, getIfcModelFromCache, storeIfcModelInCache } from './cache-manager.js';
+import { getOrCreateTemplate, generateBasicTemplate, generateStoreyTemplate, generateWallTemplate, applyTemplate } from './templates.js';
+
 console.log("Application chargée");
 
 // Sélection des éléments du DOM
@@ -163,6 +167,78 @@ async function extractParameters() {
     
     // Attendre que toutes les questions soient traitées
     const results = await Promise.all(questionPromises.map(async (item) => {
+      try {
+        if (item.error) {
+          console.error(`Erreur pour la question "${item.question}":`, item.error);
+          return { question: item.question, answer: null, error: item.error };
+        }
+        
+        const result = await item.promise;
+        console.log(`Réponse obtenue pour "${item.question}":`, result);
+        return { question: item.question, answer: result, error: null };
+      } catch (error) {
+        console.error(`Erreur lors du traitement de la question "${item.question}":`, error);
+        return { question: item.question, answer: null, error };
+      }
+    }));
+    
+    // Traiter les résultats pour mettre à jour les paramètres
+    results.forEach((result, index) => {
+      if (result.error || !result.answer) {
+        console.warn(`Pas de réponse valide pour la question ${index+1}, utilisation de la valeur par défaut`);
+        return; // Conserver la valeur par défaut
+      }
+      
+      const answer = result.answer[0]?.generated_text || '';
+      console.log(`Réponse traitée pour la question ${index+1}:`, answer);
+      
+      // Mettre à jour les paramètres en fonction de la question
+      switch (index) {
+        case 0: // Surface
+          const surfaceMatch = answer.match(/(\d+)\s*m²|m2|metres?\s*carres?/i);
+          if (surfaceMatch) {
+            parameters.surface = `${surfaceMatch[1]} m²`;
+          }
+          break;
+        case 1: // Niveaux
+          const niveauxMatch = answer.match(/(\d+)/i);
+          if (niveauxMatch) {
+            parameters.niveaux = parseInt(niveauxMatch[1], 10) || 1;
+          }
+          break;
+        case 2: // Chambres
+          const chambresMatch = answer.match(/(\d+)/i);
+          if (chambresMatch) {
+            parameters.chambres = parseInt(chambresMatch[1], 10) || 2;
+          }
+          break;
+        case 3: // Salles de bain
+          const sdbMatch = answer.match(/(\d+)/i);
+          if (sdbMatch) {
+            parameters.sallesDeBain = parseInt(sdbMatch[1], 10) || 1;
+          }
+          break;
+        case 4: // Garage
+          parameters.garage = /oui|yes|vrai|true|1/i.test(answer);
+          break;
+      }
+    });
+    
+    console.log('Paramètres extraits avec succès:', parameters);
+    statusDiv.textContent = 'Paramètres extraits avec succès!';
+    loaderDiv.classList.add('hidden');
+    
+    // Stocker les paramètres dans le cache pour une utilisation future
+    storeExtractedParamsInCache(userText, parameters);
+    
+    return parameters;
+  } catch (error) {
+    console.error('Erreur lors de l\'extraction des paramètres:', error);
+    statusDiv.textContent = 'Erreur lors de l\'extraction: ' + error.message;
+    loaderDiv.classList.add('hidden');
+    return null;
+  }
+}
 
 /**
  * Fonction pour générer un fichier IFC à partir des paramètres extraits
@@ -181,7 +257,13 @@ async function generateIFC(json) {
     }
     
     // Initialiser l'API IFC
-    const ifcApi = new window.IfcAPI();
+    // Vérifier si la bibliothèque IFC est disponible
+    if (typeof IFC === 'undefined') {
+      console.error('La bibliothèque IFC n\'est pas chargée');
+      throw new Error('La bibliothèque IFC n\'est pas disponible');
+    }
+    
+    const ifcApi = new IFC.IfcAPI();
     console.log('API IFC créée');
     await ifcApi.Init();
     console.log('API IFC initialisée');
@@ -236,32 +318,44 @@ async function generateIFC(json) {
 async function createBasicIfcModel(ifcApi, json) {
   try {
     // Créer un nouveau modèle
+    console.log('Tentative de création d\'un nouveau modèle IFC');
+    console.log('Méthodes disponibles dans ifcApi:', Object.getOwnPropertyNames(ifcApi).join(', '));
+    
     const modelID = ifcApi.CreateModel();
     console.log('Nouveau modèle IFC créé avec ID:', modelID);
     
-    // Essayer d'utiliser les méthodes disponibles dans l'API
-    if (typeof ifcApi.CreateIfcProject === 'function') {
-      const projectGUID = ifcApi.CreateGuid();
-      ifcApi.CreateIfcProject(modelID, projectGUID, 'Projet Généré', 'Description du projet');
-      console.log('Projet IFC créé avec GUID:', projectGUID);
-      
-      // Ajouter un bâtiment si possible
-      if (typeof ifcApi.CreateIfcBuilding === 'function') {
-        const buildingGUID = ifcApi.CreateGuid();
-        ifcApi.CreateIfcBuilding(modelID, buildingGUID, 'Bâtiment', 'Description du bâtiment');
-        console.log('Bâtiment IFC créé avec GUID:', buildingGUID);
+    // Vérifier les méthodes disponibles dans l'API
+    console.log('Vérification des méthodes disponibles dans l\'API IFC');
+    
+    // Utiliser une approche plus robuste pour créer le modèle
+    try {
+      // Essayer d'utiliser les méthodes disponibles dans l'API
+      if (typeof ifcApi.CreateIfcProject === 'function') {
+        const projectGUID = ifcApi.CreateGuid();
+        ifcApi.CreateIfcProject(modelID, projectGUID, 'Projet Généré', 'Description du projet');
+        console.log('Projet IFC créé avec GUID:', projectGUID);
         
-        // Ajouter des étages si possible
-        if (typeof ifcApi.CreateIfcBuildingStorey === 'function') {
-          const niveaux = json.niveaux || 1;
+        // Ajouter un bâtiment si possible
+        if (typeof ifcApi.CreateIfcBuilding === 'function') {
+          const buildingGUID = ifcApi.CreateGuid();
+          ifcApi.CreateIfcBuilding(modelID, buildingGUID, 'Bâtiment', 'Description du bâtiment');
+          console.log('Bâtiment IFC créé avec GUID:', buildingGUID);
           
-          for (let i = 0; i < niveaux; i++) {
-            const storeyGUID = ifcApi.CreateGuid();
-            ifcApi.CreateIfcBuildingStorey(modelID, storeyGUID, `Étage ${i+1}`, `Description de l'étage ${i+1}`, i * 3.0);
-            console.log(`Étage ${i+1} IFC créé avec GUID:`, storeyGUID);
+          // Ajouter des étages si possible
+          if (typeof ifcApi.CreateIfcBuildingStorey === 'function') {
+            const niveaux = json.niveaux || 1;
+            
+            for (let i = 0; i < niveaux; i++) {
+              const storeyGUID = ifcApi.CreateGuid();
+              ifcApi.CreateIfcBuildingStorey(modelID, storeyGUID, `Étage ${i+1}`, `Description de l'étage ${i+1}`, i * 3.0);
+              console.log(`Étage ${i+1} IFC créé avec GUID:`, storeyGUID);
+            }
           }
         }
       }
+    } catch (apiError) {
+      console.warn('Erreur lors de l\'utilisation des méthodes API spécifiques:', apiError);
+      console.log('Passage à la méthode alternative...');
     }
     
     return modelID;
@@ -282,17 +376,20 @@ async function generateBasicIfcFile(json) {
     
     // Récupérer le template de base
     const basicTemplate = getOrCreateTemplate('basic', generateBasicTemplate);
+    console.log('Template de base récupéré, longueur:', basicTemplate.length);
     
     // Générer les sections d'étages
     let storeysContent = '';
     const niveaux = json.niveaux || 1;
+    console.log(`Génération de ${niveaux} niveaux`);
     
     for (let i = 0; i < niveaux; i++) {
       const storeyTemplate = generateStoreyTemplate(i, i * 3.0);
       const storeyValues = {
-        [`UUID_${200 + i * 10}`]: generateUUID()
+        [`UUID_${200 + i * 10}`]: generateUUID(false) // Utiliser le format sans tirets pour IFC
       };
       storeysContent += applyTemplate(storeyTemplate, storeyValues) + '\n    ';
+      console.log(`Étage ${i+1} généré`);
     }
     
     // Générer les sections de murs
@@ -308,26 +405,39 @@ async function generateBasicIfcFile(json) {
     for (let i = 0; i < 4; i++) {
       const wallTemplate = generateWallTemplate(i, `Mur ${directions[i]}`, positions[i].x, positions[i].y, positions[i].width, 3.0 * niveaux);
       const wallValues = {
-        [`UUID_${300 + i * 20}`]: generateUUID()
+        [`UUID_${300 + i * 20}`]: generateUUID(false) // Utiliser le format sans tirets pour IFC
       };
       wallsContent += applyTemplate(wallTemplate, wallValues) + '\n    ';
+      console.log(`Mur ${i+1} généré`);
+    
     }
     
     // Appliquer les valeurs au template de base
     const templateValues = {
       DATE: new Date().toISOString(),
-      UUID_1: generateUUID(),
-      UUID_100: generateUUID(),
+      UUID_1: generateUUID(false), // Format sans tirets pour IFC
+      UUID_100: generateUUID(false), // Format sans tirets pour IFC
       STOREYS: storeysContent,
       WALLS: wallsContent
     };
+    
+    console.log('Valeurs du template générées avec succès');
     
     const ifcContent = applyTemplate(basicTemplate, templateValues);
     
     // Créer un blob à partir du contenu IFC
     const blob = new Blob([ifcContent], { type: 'application/octet-stream' });
     console.log('Blob IFC créé avec succès, taille:', blob.size);
-    return blob;
+    console.log('Contenu IFC généré (début):', ifcContent.substring(0, 200) + '...');
+    
+    // Vérifier que le blob contient des données
+    if (blob.size > 0) {
+      console.log('Blob valide créé, prêt pour le téléchargement');
+      return blob;
+    } else {
+      console.error('Erreur: Blob vide généré');
+      throw new Error('Le fichier IFC généré est vide');
+    }
   } catch (error) {
     console.error('Erreur lors de la génération du fichier IFC avec templates:', error);
     
@@ -360,14 +470,36 @@ function generateUUID() {
  * Fonction pour télécharger un fichier
  */
 function downloadFile(blob, filename) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename || 'batiment.ifc';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  console.log('Téléchargement du fichier, taille du blob:', blob.size);
+  
+  // Vérifier que le blob est valide
+  if (!blob || blob.size === 0) {
+    console.error('Erreur: Tentative de téléchargement d\'un blob vide');
+    statusDiv.textContent = 'Erreur: Le fichier généré est vide';
+    return;
+  }
+  
+  try {
+    const url = URL.createObjectURL(blob);
+    console.log('URL créée pour le téléchargement:', url);
+    
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename || 'batiment.ifc';
+    document.body.appendChild(a);
+    
+    console.log('Déclenchement du téléchargement...');
+    a.click();
+    
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    console.log('Téléchargement initié avec succès');
+    statusDiv.textContent = 'Fichier IFC téléchargé avec succès!';
+  } catch (error) {
+    console.error('Erreur lors du téléchargement:', error);
+    statusDiv.textContent = 'Erreur lors du téléchargement: ' + error.message;
+  }
 }
 
 // Initialiser l'application au chargement
@@ -402,19 +534,48 @@ document.addEventListener('DOMContentLoaded', async () => {
       loaderDiv.classList.remove('hidden');
       statusDiv.textContent = 'Génération du fichier IFC en cours...';
       
-      const ifcBlob = await generateIFC(parameters);
-      if (ifcBlob) {
-        // Télécharger le fichier
-        downloadFile(ifcBlob, 'batiment.ifc');
-        statusDiv.textContent = 'Fichier IFC généré avec succès!';
+      // Vérifier si la bibliothèque IFC est disponible
+      if (typeof IFC === 'undefined') {
+        console.warn('La bibliothèque IFC n\'est pas disponible, utilisation de la méthode alternative');
+        // Utiliser directement la méthode alternative
+        const ifcBlob = await generateBasicIfcFile(parameters);
+        if (ifcBlob) {
+          downloadFile(ifcBlob, 'batiment.ifc');
+          statusDiv.textContent = 'Fichier IFC généré avec succès (méthode alternative)!';
+        } else {
+          statusDiv.textContent = 'Erreur lors de la génération du fichier IFC.';
+        }
       } else {
-        statusDiv.textContent = 'Erreur lors de la génération du fichier IFC.';
+        // Utiliser la méthode standard
+        const ifcBlob = await generateIFC(parameters);
+        if (ifcBlob) {
+          // Télécharger le fichier
+          downloadFile(ifcBlob, 'batiment.ifc');
+          statusDiv.textContent = 'Fichier IFC généré avec succès!';
+        } else {
+          statusDiv.textContent = 'Erreur lors de la génération du fichier IFC.';
+        }
       }
     } catch (error) {
       console.error('Erreur lors de la génération:', error);
       statusDiv.textContent = 'Erreur: ' + error.message;
+      
+      // En cas d'erreur, essayer la méthode alternative
+      try {
+        console.log('Tentative de génération avec la méthode alternative...');
+        const ifcBlob = await generateBasicIfcFile(parameters);
+        if (ifcBlob) {
+          downloadFile(ifcBlob, 'batiment.ifc');
+          statusDiv.textContent = 'Fichier IFC généré avec succès (méthode de secours)!';
+        }
+      } catch (fallbackError) {
+        console.error('Échec de la méthode alternative:', fallbackError);
+      }
     } finally {
       loaderDiv.classList.add('hidden');
+      statusDiv.textContent = '';
+      console.log('Traitement terminé');
     }
-  });
-});
+
+}); // Fermeture du gestionnaire d'événements du bouton de génération
+}); // Fermeture de l'événement DOMContentLoaded
