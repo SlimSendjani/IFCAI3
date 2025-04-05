@@ -1,0 +1,139 @@
+Prompt 1/5 - Initialisation et Structure du Projet
+text
+
+Réduire
+
+Envelopper
+
+Copier
+Crée une application web statique avec la structure suivante :
+
+- **public/** : Dossier pour les fichiers accessibles au navigateur.
+  - **index.html** : Contient un `<header>` avec un logo (50x50px) et un titre `<h1>Générateur IFC</h1>`, une `<section id="main">` avec un `<textarea id="input" placeholder="Décrivez votre bâtiment...">` (600x150px), un `<button id="generate">Générer IFC</button>`, un `<div id="status"></div>`, un `<div id="loader" class="hidden"></div>` (spinner gris de 40px), et une `<section id="viewer">` avec un `<canvas id="canvas" width="600" height="400"></canvas>`.
+  - **styles.css** : Utilise une palette avec fond `#FFFFFF`, texte `#333333`, accents `#1E3A8A`, gris `#E5E7EB`. Ajoute des styles pour `.btn-primary` (fond `#1E3A8A`, texte blanc, padding 10px 20px, bordure arrondie 5px, hover éclairci), `#loader` (animation rotation 360° en 1s), et layout responsive avec flexbox. Police : `Roboto` via Google Fonts.
+
+- **src/** : Dossier pour le code JavaScript.
+  - **app.js** : Fichier principal avec `console.log("Application chargée");`.
+
+- **package.json** : Inclut les dépendances `@xenova/transformers@^2.6.0`, `web-ifc@^0.0.44`, `ifc.js@^0.0.1`, `firebase@^10.5.0`, et les scripts `"start": "npx serve public"`, `"build": "echo 'Build ready'"`.
+
+**Instructions de vérification** :
+- Ouvre `index.html` dans un navigateur : le titre, le textarea, le bouton, et le canvas doivent être visibles avec les styles appliqués.
+- Vérifie que `styles.css` charge correctement et que le design est responsive (teste sur mobile).
+- Lance `npm start` et assure que `app.js` s'exécute sans erreur (`console.log` visible dans la console).
+
+**Ce que je devrais avoir pour valider le test** : Une page web statique avec un design sobre, un champ de texte, un bouton, et un canvas vide, prête pour l’ajout de fonctionnalités.
+Prompt 2/5 - Extraction des Paramètres avec IA
+text
+
+Réduire
+
+Envelopper
+
+Copier
+Dans **src/app.js**, implémente l'extraction des paramètres à partir du texte utilisateur avec T5-small :
+
+1. **Initialisation du modèle** :
+   - Importe `@xenova/transformers` avec `import { pipeline } from '@xenova/transformers';`.
+   - Crée une variable `let extractor = null;`.
+   - Ajoute une fonction `async function initExtractor() { ... }` pour charger `t5-small` avec `quantized: true` et afficher/masquer `#loader`.
+
+2. **Fonction `extractParameters()`** :
+   - Récupère le texte de `textarea#input`.
+   - Pose des questions comme "Quelle est la surface totale du bâtiment ?", "Combien de niveaux a le bâtiment ?", "Combien de chambres ?", etc.
+   - Utilise `extractor` pour répondre à chaque question et parse les réponses dans un objet JSON avec des valeurs par défaut (ex. : surface = "100 m²", niveaux = 1).
+
+3. **Gestion des erreurs** :
+   - Si le texte est vide ou < 20 caractères, affiche "Erreur : veuillez fournir une description plus détaillée." dans `#status`.
+   - Utilise des valeurs par défaut si les réponses sont invalides.
+
+**Instructions de vérification** :
+- Ajoute un bouton temporaire pour appeler `extractParameters()` et affiche le JSON dans `#status`.
+- Entre un texte comme "Maison de 200 m², 2 niveaux, 3 chambres" et vérifie que le JSON contient `{ surface: "200 m²", niveaux: 2, chambres: 3, ... }`.
+- Teste avec un texte vague ("Maison") et assure que l’erreur s’affiche.
+
+**Ce que je devrais avoir pour valider le test** : Une fonction qui extrait correctement les paramètres d’une description et gère les erreurs de saisie.
+Prompt 3/5 - Génération IFC et Prévisualisation
+text
+
+Réduire
+
+Envelopper
+
+Copier
+Dans **src/app.js**, ajoute les fonctions pour générer le fichier IFC et le prévisualiser :
+
+1. **Fonction `generateIFC(json)`** :
+   - Importe `web-ifc` avec `import { IfcAPI } from 'web-ifc';`.
+   - Initialise un modèle IFC avec `IfcProject`, `IfcSite`, `IfcBuilding`, et `IfcBuildingStorey` basé sur `json.niveaux`.
+   - Ajoute des `IfcWallStandardCase` pour les murs (ex. : rectangle 10x10 m) et des `IfcDoor` pour chaque chambre.
+   - Exporte le modèle en blob.
+
+2. **Fonction `previewIFC(ifcData)`** :
+   - Utilise `ifc.js` pour charger et afficher le modèle dans `#canvas` avec des contrôles de base (rotation, zoom).
+
+3. **Intégration** :
+   - Lie le bouton `#generate` à `extractParameters()`, puis `generateIFC()`, et enfin `previewIFC()`.
+   - Ajoute un bouton "Télécharger IFC" dans `#status` après génération réussie.
+
+**Instructions de vérification** :
+- Entre une description valide, clique sur "Générer", et assure que le canvas affiche un modèle 3D simple.
+- Clique sur "Télécharger IFC" et vérifie que le fichier est téléchargeable et lisible avec un visualiseur IFC (ex. : BIM Vision).
+- Teste avec des paramètres variés (ex. : 1 niveau vs 3 niveaux) pour voir les différences.
+
+**Ce que je devrais avoir pour valider le test** : Un modèle IFC généré à partir des paramètres extraits, avec une prévisualisation 3D fonctionnelle et un téléchargement possible.
+Prompt 4/5 - Monétisation Freemium
+text
+
+Réduire
+
+Envelopper
+
+Copier
+Dans **src/app.js**, implémente le modèle freemium avec Firebase et Stripe :
+
+1. **Configuration Firebase** :
+   - Importe Firebase et initialise avec des clés fictives (`apiKey`, `authDomain`, `projectId`).
+   - Utilise l’authentification anonyme pour identifier les utilisateurs.
+
+2. **Suivi des générations** :
+   - Crée une fonction `checkLimit()` qui vérifie si l’utilisateur a atteint la limite de 3 générations/mois (stockée dans Firestore et LocalStorage).
+   - Avant chaque génération, appelle `checkLimit()` et bloque si la limite est atteinte, affichant "Limite atteinte. <a href='/pricing.html'>Passer Pro</a>".
+
+3. **Page pricing.html** :
+   - Crée une page avec deux plans : Gratuit (3 fichiers/mois) et Pro (9,99 €/mois, illimité).
+   - Ajoute un bouton "Acheter" qui utilise Stripe Checkout pour rediriger vers le paiement.
+
+**Instructions de vérification** :
+- Simule 3 générations et assure que la 4ème affiche le message de limite.
+- Vérifie que le bouton "Acheter" redirige vers une page de paiement Stripe (utilise un mode test).
+- Assure que les utilisateurs Pro (simulés) peuvent générer sans limite.
+
+**Ce que je devrais avoir pour valider le test** : Un système de limitation pour les utilisateurs gratuits et une option d’abonnement fonctionnelle.
+Prompt 5/5 - Déploiement et Tests
+text
+
+Réduire
+
+Envelopper
+
+Copier
+Finalise le projet pour le déploiement sur Netlify et ajoute des tests :
+
+1. **Configuration Netlify** :
+   - Crée un fichier **netlify.toml** avec `[build] publish = "public" command = "npm install"`.
+   - Ajoute les variables d’environnement pour Firebase et Stripe dans Netlify.
+
+2. **Tests avec Jest** :
+   - Ajoute `"jest": "^29.7.0"` dans `package.json`.
+   - Crée **tests/app.test.js** avec des tests pour `extractParameters()` et `generateIFC()`.
+
+3. **Documentation** :
+   - Crée **public/docs.html** avec des exemples de descriptions et des instructions d’utilisation.
+
+**Instructions de vérification** :
+- Déploie sur Netlify et assure que le site est accessible avec HTTPS.
+- Exécute `npm test` et vérifie que les tests passent sans erreur.
+- Ouvre `docs.html` et assure que les exemples sont corrects et utiles.
+
+**Ce que je devrais avoir pour valider le test** : Un SaaS déployé, testé, et documenté, pr
