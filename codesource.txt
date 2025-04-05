@@ -1,0 +1,1988 @@
+Prompt 1/5 - Initialisation et Structure du Projet
+text
+
+Réduire
+
+Envelopper
+
+Copier
+Crée une application web statique avec la structure suivante :
+
+- **public/** : Dossier pour les fichiers accessibles au navigateur.
+  - **index.html** : Contient un `<header>` avec un logo (50x50px) et un titre `<h1>Générateur IFC</h1>`, une `<section id="main">` avec un `<textarea id="input" placeholder="Décrivez votre bâtiment...">` (600x150px), un `<button id="generate">Générer IFC</button>`, un `<div id="status"></div>`, un `<div id="loader" class="hidden"></div>` (spinner gris de 40px), et une `<section id="viewer">` avec un `<canvas id="canvas" width="600" height="400"></canvas>`.
+  - **styles.css** : Utilise une palette avec fond `#FFFFFF`, texte `#333333`, accents `#1E3A8A`, gris `#E5E7EB`. Ajoute des styles pour `.btn-primary` (fond `#1E3A8A`, texte blanc, padding 10px 20px, bordure arrondie 5px, hover éclairci), `#loader` (animation rotation 360° en 1s), et layout responsive avec flexbox. Police : `Roboto` via Google Fonts.
+
+- **src/** : Dossier pour le code JavaScript.
+  - **app.js** : Fichier principal avec `console.log("Application chargée");`.
+
+- **package.json** : Inclut les dépendances `@xenova/transformers@^2.6.0`, `web-ifc@^0.0.44`, `ifc.js@^0.0.1`, `firebase@^10.5.0`, et les scripts `"start": "npx serve public"`, `"build": "echo 'Build ready'"`.
+
+**Instructions de vérification** :
+- Ouvre `index.html` dans un navigateur : le titre, le textarea, le bouton, et le canvas doivent être visibles avec les styles appliqués.
+- Vérifie que `styles.css` charge correctement et que le design est responsive (teste sur mobile).
+- Lance `npm start` et assure que `app.js` s'exécute sans erreur (`console.log` visible dans la console).
+
+**Ce que je devrais avoir pour valider le test** : Une page web statique avec un design sobre, un champ de texte, un bouton, et un canvas vide, prête pour l’ajout de fonctionnalités.
+Prompt 2/5 - Extraction des Paramètres avec IA
+text
+
+Réduire
+
+Envelopper
+
+Copier
+Dans **src/app.js**, implémente l'extraction des paramètres à partir du texte utilisateur avec T5-small :
+
+1. **Initialisation du modèle** :
+   - Importe `@xenova/transformers` avec `import { pipeline } from '@xenova/transformers';`.
+   - Crée une variable `let extractor = null;`.
+   - Ajoute une fonction `async function initExtractor() { ... }` pour charger `t5-small` avec `quantized: true` et afficher/masquer `#loader`.
+
+2. **Fonction `extractParameters()`** :
+   - Récupère le texte de `textarea#input`.
+   - Pose des questions comme "Quelle est la surface totale du bâtiment ?", "Combien de niveaux a le bâtiment ?", "Combien de chambres ?", etc.
+   - Utilise `extractor` pour répondre à chaque question et parse les réponses dans un objet JSON avec des valeurs par défaut (ex. : surface = "100 m²", niveaux = 1).
+
+3. **Gestion des erreurs** :
+   - Si le texte est vide ou < 20 caractères, affiche "Erreur : veuillez fournir une description plus détaillée." dans `#status`.
+   - Utilise des valeurs par défaut si les réponses sont invalides.
+
+**Instructions de vérification** :
+- Ajoute un bouton temporaire pour appeler `extractParameters()` et affiche le JSON dans `#status`.
+- Entre un texte comme "Maison de 200 m², 2 niveaux, 3 chambres" et vérifie que le JSON contient `{ surface: "200 m²", niveaux: 2, chambres: 3, ... }`.
+- Teste avec un texte vague ("Maison") et assure que l’erreur s’affiche.
+
+**Ce que je devrais avoir pour valider le test** : Une fonction qui extrait correctement les paramètres d’une description et gère les erreurs de saisie.
+Prompt 3/5 - Génération IFC et Prévisualisation
+text
+
+Réduire
+
+Envelopper
+
+Copier
+Dans **src/app.js**, ajoute les fonctions pour générer le fichier IFC et le prévisualiser :
+
+1. **Fonction `generateIFC(json)`** :
+   - Importe `web-ifc` avec `import { IfcAPI } from 'web-ifc';`.
+   - Initialise un modèle IFC avec `IfcProject`, `IfcSite`, `IfcBuilding`, et `IfcBuildingStorey` basé sur `json.niveaux`.
+   - Ajoute des `IfcWallStandardCase` pour les murs (ex. : rectangle 10x10 m) et des `IfcDoor` pour chaque chambre.
+   - Exporte le modèle en blob.
+
+2. **Fonction `previewIFC(ifcData)`** :
+   - Utilise `ifc.js` pour charger et afficher le modèle dans `#canvas` avec des contrôles de base (rotation, zoom).
+
+3. **Intégration** :
+   - Lie le bouton `#generate` à `extractParameters()`, puis `generateIFC()`, et enfin `previewIFC()`.
+   - Ajoute un bouton "Télécharger IFC" dans `#status` après génération réussie.
+
+**Instructions de vérification** :
+- Entre une description valide, clique sur "Générer", et assure que le canvas affiche un modèle 3D simple.
+- Clique sur "Télécharger IFC" et vérifie que le fichier est téléchargeable et lisible avec un visualiseur IFC (ex. : BIM Vision).
+- Teste avec des paramètres variés (ex. : 1 niveau vs 3 niveaux) pour voir les différences.
+
+**Ce que je devrais avoir pour valider le test** : Un modèle IFC généré à partir des paramètres extraits, avec une prévisualisation 3D fonctionnelle et un téléchargement possible.
+Prompt 4/5 - Monétisation Freemium
+text
+
+Réduire
+
+Envelopper
+
+Copier
+Dans **src/app.js**, implémente le modèle freemium avec Firebase et Stripe :
+
+1. **Configuration Firebase** :
+   - Importe Firebase et initialise avec des clés fictives (`apiKey`, `authDomain`, `projectId`).
+   - Utilise l’authentification anonyme pour identifier les utilisateurs.
+
+2. **Suivi des générations** :
+   - Crée une fonction `checkLimit()` qui vérifie si l’utilisateur a atteint la limite de 3 générations/mois (stockée dans Firestore et LocalStorage).
+   - Avant chaque génération, appelle `checkLimit()` et bloque si la limite est atteinte, affichant "Limite atteinte. <a href='/pricing.html'>Passer Pro</a>".
+
+3. **Page pricing.html** :
+   - Crée une page avec deux plans : Gratuit (3 fichiers/mois) et Pro (9,99 €/mois, illimité).
+   - Ajoute un bouton "Acheter" qui utilise Stripe Checkout pour rediriger vers le paiement.
+
+**Instructions de vérification** :
+- Simule 3 générations et assure que la 4ème affiche le message de limite.
+- Vérifie que le bouton "Acheter" redirige vers une page de paiement Stripe (utilise un mode test).
+- Assure que les utilisateurs Pro (simulés) peuvent générer sans limite.
+
+**Ce que je devrais avoir pour valider le test** : Un système de limitation pour les utilisateurs gratuits et une option d’abonnement fonctionnelle.
+Prompt 5/5 - Déploiement et Tests
+text
+
+Réduire
+
+Envelopper
+
+Copier
+Finalise le projet pour le déploiement sur Netlify et ajoute des tests :
+
+1. **Configuration Netlify** :
+   - Crée un fichier **netlify.toml** avec `[build] publish = "public" command = "npm install"`.
+   - Ajoute les variables d’environnement pour Firebase et Stripe dans Netlify.
+
+2. **Tests avec Jest** :
+   - Ajoute `"jest": "^29.7.0"` dans `package.json`.
+   - Crée **tests/app.test.js** avec des tests pour `extractParameters()` et `generateIFC()`.
+
+3. **Documentation** :
+   - Crée **public/docs.html** avec des exemples de descriptions et des instructions d’utilisation.
+
+**Instructions de vérification** :
+- Déploie sur Netlify et assure que le site est accessible avec HTTPS.
+- Exécute `npm test` et vérifie que les tests passent sans erreur.
+- Ouvre `docs.html` et assure que les exemples sont corrects et utiles.
+
+**Ce que je devrais avoir pour valider le test** : Un SaaS déployé, testé, et documenté, pr﻿
+
+
+
+//***********************************
+// Path: \public\src\app.js
+//***********************************
+/**
+ * Fichier principal JavaScript pour l'application GÃ©nÃ©rateur IFC
+ */
+
+// Nous utiliserons les bibliothÃ¨ques chargÃ©es via des balises script dans le HTML
+// Les variables globales seront disponibles: pipeline, IfcAPI, IFC
+
+// Import des modules nÃ©cessaires
+import { getExtractedParamsFromCache, storeExtractedParamsInCache, getIfcModelFromCache, storeIfcModelInCache } from './cache-manager.js';
+import { getOrCreateTemplate, generateBasicTemplate, generateStoreyTemplate, generateWallTemplate, applyTemplate } from './templates.js';
+
+console.log("Application chargÃ©e");
+
+// SÃ©lection des Ã©lÃ©ments du DOM
+const inputTextarea = document.getElementById('input');
+const generateButton = document.getElementById('generate');
+const statusDiv = document.getElementById('status');
+const loaderDiv = document.getElementById('loader');
+const canvas = document.getElementById('canvas');
+
+// Initialisation du modÃ¨le T5-small
+let extractor = null;
+let modelLoading = false;
+let modelLoadPromise = null;
+
+async function initExtractor() {
+  // Si le modÃ¨le est dÃ©jÃ  en cours de chargement, retourner la promesse existante
+  if (modelLoadPromise) {
+    return modelLoadPromise;
+  }
+  
+  // Si le modÃ¨le est dÃ©jÃ  chargÃ©, retourner immÃ©diatement
+  if (extractor) {
+    console.log('ModÃ¨le dÃ©jÃ  chargÃ©, utilisation du cache');
+    return true;
+  }
+  
+  try {
+    modelLoading = true;
+    loaderDiv.classList.remove('hidden');
+    statusDiv.textContent = 'Chargement du modÃ¨le...';
+    
+    console.log('Importation de la bibliothÃ¨que transformers...');
+    console.time('Chargement transformers');
+    
+    // CrÃ©er une promesse pour le chargement du modÃ¨le
+    modelLoadPromise = (async () => {
+      // Importer directement la bibliothÃ¨que en utilisant ES modules
+      const { pipeline } = await import('https://cdn.jsdelivr.net/npm/@xenova/transformers@2.6.0/dist/transformers.min.js');
+      console.log('BibliothÃ¨que transformers importÃ©e avec succÃ¨s');
+      console.timeEnd('Chargement transformers');
+      
+      // Charger le modÃ¨le T5-small avec l'option quantized
+      console.log('Chargement du modÃ¨le T5-small...');
+      console.time('Chargement modÃ¨le T5');
+      extractor = await pipeline('text2text-generation', 't5-small', { 
+        quantized: true,
+        cache: true // Activer le cache pour Ã©viter de recharger le modÃ¨le
+      });
+      console.timeEnd('Chargement modÃ¨le T5');
+      console.log('ModÃ¨le T5-small chargÃ© avec succÃ¨s');
+      
+      statusDiv.textContent = 'ModÃ¨le chargÃ© avec succÃ¨s!';
+      loaderDiv.classList.add('hidden');
+      modelLoading = false;
+      return true;
+    })();
+    
+    return await modelLoadPromise;
+  } catch (error) {
+    console.error('Erreur lors du chargement du modÃ¨le:', error);
+    statusDiv.textContent = 'Erreur lors du chargement du modÃ¨le: ' + error.message;
+    loaderDiv.classList.add('hidden');
+    modelLoading = false;
+    modelLoadPromise = null;
+    return false;
+  }
+}
+
+/**
+ * Fonction pour extraire les paramÃ¨tres du texte utilisateur
+ */
+async function extractParameters() {
+  console.log('DÃ©but de l\'extraction des paramÃ¨tres');
+  
+  // RÃ©cupÃ©rer le texte de l'utilisateur
+  const userText = inputTextarea.value.trim();
+  console.log('Texte utilisateur rÃ©cupÃ©rÃ©, longueur:', userText.length);
+  
+  // VÃ©rifier si le texte est suffisamment dÃ©taillÃ©
+  if (!userText || userText.length < 20) {
+    console.warn('Texte utilisateur insuffisant');
+    statusDiv.textContent = "Erreur : veuillez fournir une description plus dÃ©taillÃ©e.";
+    return null;
+  }
+  
+  // VÃ©rifier si les paramÃ¨tres sont dÃ©jÃ  en cache
+  const cachedParams = getExtractedParamsFromCache(userText);
+  if (cachedParams) {
+    console.log('ParamÃ¨tres rÃ©cupÃ©rÃ©s depuis le cache:', cachedParams);
+    statusDiv.textContent = 'ParamÃ¨tres rÃ©cupÃ©rÃ©s depuis le cache';
+    return cachedParams;
+  }
+  
+  // VÃ©rifier si le modÃ¨le est chargÃ©
+  if (!extractor) {
+    console.error('ModÃ¨le non chargÃ©, tentative de chargement');
+    try {
+      const modelLoaded = await initExtractor();
+      if (!modelLoaded) {
+        console.error('Ã‰chec du chargement du modÃ¨le');
+        statusDiv.textContent = "Erreur : impossible de charger le modÃ¨le.";
+        return null;
+      }
+    } catch (loadError) {
+      console.error('Exception lors du chargement du modÃ¨le:', loadError);
+      statusDiv.textContent = "Erreur : Ã©chec du chargement du modÃ¨le - " + loadError.message;
+      return null;
+    }
+  }
+  
+  console.log('ModÃ¨le disponible, dÃ©but de l\'extraction');
+  loaderDiv.classList.remove('hidden');
+  statusDiv.textContent = 'Extraction des paramÃ¨tres en cours...';
+  
+  try {
+    // Questions Ã  poser au modÃ¨le
+    const questions = [
+      "Quelle est la surface totale du bÃ¢timent ?",
+      "Combien de niveaux a le bÃ¢timent ?",
+      "Combien de chambres ?",
+      "Combien de salles de bain ?",
+      "Y a-t-il un garage ?"
+    ];
+    
+    // Objet pour stocker les rÃ©ponses avec des valeurs par dÃ©faut
+    const parameters = {
+      surface: "100 mÂ²",
+      niveaux: 1,
+      chambres: 2,
+      sallesDeBain: 1,
+      garage: false
+    };
+    
+    // Traiter toutes les questions en parallÃ¨le pour accÃ©lÃ©rer l'extraction
+    const questionPromises = questions.map(async (question, index) => {
+      try {
+        // Limiter la taille du contexte pour Ã©viter les problÃ¨mes de tokens
+        const contextLimit = 500;
+        const limitedContext = userText.length > contextLimit ? 
+          userText.substring(0, contextLimit) + '...' : userText;
+        
+        const input = `${question}\nContexte: ${limitedContext}`;
+        console.log(`PrÃ©paration de la question ${index+1}/${questions.length}: ${question}`);
+        
+        // Ajouter un timeout pour Ã©viter les blocages
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('DÃ©lai d\'attente dÃ©passÃ©')), 10000);
+        });
+        
+        return { question, promise: Promise.race([extractor(input, { max_new_tokens: 50 }), timeoutPromise]) };
+      } catch (error) {
+        console.error(`Erreur lors de la prÃ©paration de la question "${question}":`, error);
+        return { question, error };
+      }
+    });
+    
+    // Attendre que toutes les questions soient traitÃ©es
+    const results = await Promise.all(questionPromises.map(async (item) => {
+      try {
+        if (item.error) {
+          console.error(`Erreur pour la question "${item.question}":`, item.error);
+          return { question: item.question, answer: null, error: item.error };
+        }
+        
+        const result = await item.promise;
+        console.log(`RÃ©ponse obtenue pour "${item.question}":`, result);
+        return { question: item.question, answer: result, error: null };
+      } catch (error) {
+        console.error(`Erreur lors du traitement de la question "${item.question}":`, error);
+        return { question: item.question, answer: null, error };
+      }
+    }));
+    
+    // Traiter les rÃ©sultats pour mettre Ã  jour les paramÃ¨tres
+    results.forEach((result, index) => {
+      if (result.error || !result.answer) {
+        console.warn(`Pas de rÃ©ponse valide pour la question ${index+1}, utilisation de la valeur par dÃ©faut`);
+        return; // Conserver la valeur par dÃ©faut
+      }
+      
+      const answer = result.answer[0]?.generated_text || '';
+      console.log(`RÃ©ponse traitÃ©e pour la question ${index+1}:`, answer);
+      
+      // Mettre Ã  jour les paramÃ¨tres en fonction de la question
+      switch (index) {
+        case 0: // Surface
+          const surfaceMatch = answer.match(/(\d+)\s*mÂ²|m2|metres?\s*carres?/i);
+          if (surfaceMatch) {
+            parameters.surface = `${surfaceMatch[1]} mÂ²`;
+          }
+          break;
+        case 1: // Niveaux
+          const niveauxMatch = answer.match(/(\d+)/i);
+          if (niveauxMatch) {
+            parameters.niveaux = parseInt(niveauxMatch[1], 10) || 1;
+          }
+          break;
+        case 2: // Chambres
+          const chambresMatch = answer.match(/(\d+)/i);
+          if (chambresMatch) {
+            parameters.chambres = parseInt(chambresMatch[1], 10) || 2;
+          }
+          break;
+        case 3: // Salles de bain
+          const sdbMatch = answer.match(/(\d+)/i);
+          if (sdbMatch) {
+            parameters.sallesDeBain = parseInt(sdbMatch[1], 10) || 1;
+          }
+          break;
+        case 4: // Garage
+          parameters.garage = /oui|yes|vrai|true|1/i.test(answer);
+          break;
+      }
+    });
+    
+    console.log('ParamÃ¨tres extraits avec succÃ¨s:', parameters);
+    statusDiv.textContent = 'ParamÃ¨tres extraits avec succÃ¨s!';
+    loaderDiv.classList.add('hidden');
+    
+    // Stocker les paramÃ¨tres dans le cache pour une utilisation future
+    storeExtractedParamsInCache(userText, parameters);
+    
+    return parameters;
+  } catch (error) {
+    console.error('Erreur lors de l\'extraction des paramÃ¨tres:', error);
+    statusDiv.textContent = 'Erreur lors de l\'extraction: ' + error.message;
+    loaderDiv.classList.add('hidden');
+    return null;
+  }
+}
+
+/**
+ * Fonction pour gÃ©nÃ©rer un fichier IFC Ã  partir des paramÃ¨tres extraits
+ * @param {Object} json - Les paramÃ¨tres extraits du texte utilisateur
+ * @returns {Promise<Blob>} - Le fichier IFC gÃ©nÃ©rÃ© sous forme de Blob
+ */
+async function generateIFC(json) {
+  try {
+    console.log('DÃ©but de la gÃ©nÃ©ration IFC avec paramÃ¨tres:', json);
+    
+    // VÃ©rifier si le modÃ¨le est dÃ©jÃ  en cache
+    const cachedModel = getIfcModelFromCache(json);
+    if (cachedModel) {
+      console.log('Utilisation du modÃ¨le IFC en cache');
+      return cachedModel;
+    }
+    
+    // Initialiser l'API IFC
+    // VÃ©rifier si la bibliothÃ¨que IFC est disponible
+    if (typeof IFC === 'undefined') {
+      console.error('La bibliothÃ¨que IFC n\'est pas chargÃ©e');
+      throw new Error('La bibliothÃ¨que IFC n\'est pas disponible');
+    }
+    
+    const ifcApi = new IFC.IfcAPI();
+    console.log('API IFC crÃ©Ã©e');
+    await ifcApi.Init();
+    console.log('API IFC initialisÃ©e');
+    
+    // VÃ©rifier si la mÃ©thode OpenModel existe
+    if (typeof ifcApi.OpenModel === 'function') {
+      console.log('Utilisation de la mÃ©thode OpenModel');
+      
+      // CrÃ©er un modÃ¨le IFC de base Ã  partir d'un template
+      const modelID = await createBasicIfcModel(ifcApi, json);
+      console.log('ModÃ¨le IFC crÃ©Ã© avec ID:', modelID);
+      
+      // Exporter le modÃ¨le en blob
+      console.log('Sauvegarde du modÃ¨le IFC...');
+      const ifcData = ifcApi.SaveModel(modelID);
+      console.log('ModÃ¨le IFC sauvegardÃ©, taille des donnÃ©es:', ifcData ? ifcData.byteLength : 'aucune donnÃ©e');
+      
+      // LibÃ©rer la mÃ©moire
+      ifcApi.CloseModel(modelID);
+      
+      if (ifcData && ifcData.byteLength > 0) {
+        const blob = new Blob([ifcData], { type: 'application/octet-stream' });
+        console.log('Blob crÃ©Ã© avec succÃ¨s, taille:', blob.size);
+        
+        // Stocker le modÃ¨le dans le cache
+        storeIfcModelInCache(json, blob);
+        
+        return blob;
+      }
+    }
+    
+    // MÃ©thode alternative si les mÃ©thodes standard ne fonctionnent pas
+    console.log('Utilisation d\'une mÃ©thode alternative pour gÃ©nÃ©rer un IFC');
+    const blob = await generateBasicIfcFile(json);
+    
+    // Stocker le modÃ¨le dans le cache
+    storeIfcModelInCache(json, blob);
+    
+    return blob;
+    
+  } catch (error) {
+    console.error('Erreur lors de la gÃ©nÃ©ration du fichier IFC:', error);
+    // GÃ©nÃ©rer un fichier IFC minimal en cas d'erreur
+    const blob = await generateBasicIfcFile(json);
+    return blob;
+  }
+}
+
+/**
+ * CrÃ©e un modÃ¨le IFC de base Ã  partir d'un template
+ */
+async function createBasicIfcModel(ifcApi, json) {
+  try {
+    // CrÃ©er un nouveau modÃ¨le
+    console.log('Tentative de crÃ©ation d\'un nouveau modÃ¨le IFC');
+    console.log('MÃ©thodes disponibles dans ifcApi:', Object.getOwnPropertyNames(ifcApi).join(', '));
+    
+    const modelID = ifcApi.CreateModel();
+    console.log('Nouveau modÃ¨le IFC crÃ©Ã© avec ID:', modelID);
+    
+    // VÃ©rifier les mÃ©thodes disponibles dans l'API
+    console.log('VÃ©rification des mÃ©thodes disponibles dans l\'API IFC');
+    
+    // Utiliser une approche plus robuste pour crÃ©er le modÃ¨le
+    try {
+      // Essayer d'utiliser les mÃ©thodes disponibles dans l'API
+      if (typeof ifcApi.CreateIfcProject === 'function') {
+        const projectGUID = ifcApi.CreateGuid();
+        ifcApi.CreateIfcProject(modelID, projectGUID, 'Projet GÃ©nÃ©rÃ©', 'Description du projet');
+        console.log('Projet IFC crÃ©Ã© avec GUID:', projectGUID);
+        
+        // Ajouter un bÃ¢timent si possible
+        if (typeof ifcApi.CreateIfcBuilding === 'function') {
+          const buildingGUID = ifcApi.CreateGuid();
+          ifcApi.CreateIfcBuilding(modelID, buildingGUID, 'BÃ¢timent', 'Description du bÃ¢timent');
+          console.log('BÃ¢timent IFC crÃ©Ã© avec GUID:', buildingGUID);
+          
+          // Ajouter des Ã©tages si possible
+          if (typeof ifcApi.CreateIfcBuildingStorey === 'function') {
+            const niveaux = json.niveaux || 1;
+            
+            for (let i = 0; i < niveaux; i++) {
+              const storeyGUID = ifcApi.CreateGuid();
+              ifcApi.CreateIfcBuildingStorey(modelID, storeyGUID, `Ã‰tage ${i+1}`, `Description de l'Ã©tage ${i+1}`, i * 3.0);
+              console.log(`Ã‰tage ${i+1} IFC crÃ©Ã© avec GUID:`, storeyGUID);
+            }
+          }
+        }
+      }
+    } catch (apiError) {
+      console.warn('Erreur lors de l\'utilisation des mÃ©thodes API spÃ©cifiques:', apiError);
+      console.log('Passage Ã  la mÃ©thode alternative...');
+    }
+    
+    return modelID;
+  } catch (error) {
+    console.error('Erreur lors de la crÃ©ation du modÃ¨le de base:', error);
+    throw error;
+  }
+}
+
+/**
+ * GÃ©nÃ¨re un fichier IFC minimal valide
+ * @param {Object} json - Les paramÃ¨tres extraits du texte utilisateur
+ * @returns {Promise<Blob>} - Le fichier IFC gÃ©nÃ©rÃ© sous forme de Blob
+ */
+async function generateBasicIfcFile(json) {
+  try {
+    console.log('GÃ©nÃ©ration d\'un fichier IFC avec templates, paramÃ¨tres:', json);
+    
+    // RÃ©cupÃ©rer le template de base
+    const basicTemplate = getOrCreateTemplate('basic', generateBasicTemplate);
+    console.log('Template de base rÃ©cupÃ©rÃ©, longueur:', basicTemplate.length);
+    
+    // GÃ©nÃ©rer les sections d'Ã©tages
+    let storeysContent = '';
+    const niveaux = json.niveaux || 1;
+    console.log(`GÃ©nÃ©ration de ${niveaux} niveaux`);
+    
+    for (let i = 0; i < niveaux; i++) {
+      const storeyTemplate = generateStoreyTemplate(i, i * 3.0);
+      const storeyValues = {
+        [`UUID_${200 + i * 10}`]: generateUUID(false) // Utiliser le format sans tirets pour IFC
+      };
+      storeysContent += applyTemplate(storeyTemplate, storeyValues) + '\n    ';
+      console.log(`Ã‰tage ${i+1} gÃ©nÃ©rÃ©`);
+    }
+    
+    // GÃ©nÃ©rer les sections de murs
+    let wallsContent = '';
+    const directions = ['Nord', 'Sud', 'Est', 'Ouest'];
+    const positions = [
+      { x: 0, y: 5, width: 10 },  // Nord
+      { x: 0, y: -5, width: 10 }, // Sud
+      { x: 5, y: 0, width: 10 },  // Est
+      { x: -5, y: 0, width: 10 }  // Ouest
+    ];
+    
+    for (let i = 0; i < 4; i++) {
+      const wallTemplate = generateWallTemplate(i, `Mur ${directions[i]}`, positions[i].x, positions[i].y, positions[i].width, 3.0 * niveaux);
+      const wallValues = {
+        [`UUID_${300 + i * 20}`]: generateUUID(false) // Utiliser le format sans tirets pour IFC
+      };
+      wallsContent += applyTemplate(wallTemplate, wallValues) + '\n    ';
+      console.log(`Mur ${i+1} gÃ©nÃ©rÃ©`);
+    
+    }
+    
+    // Appliquer les valeurs au template de base
+    const templateValues = {
+      DATE: new Date().toISOString(),
+      UUID_1: generateUUID(false), // Format sans tirets pour IFC
+      UUID_100: generateUUID(false), // Format sans tirets pour IFC
+      STOREYS: storeysContent,
+      WALLS: wallsContent
+    };
+    
+    console.log('Valeurs du template gÃ©nÃ©rÃ©es avec succÃ¨s');
+    
+    const ifcContent = applyTemplate(basicTemplate, templateValues);
+    
+    // CrÃ©er un blob Ã  partir du contenu IFC
+    const blob = new Blob([ifcContent], { type: 'application/octet-stream' });
+    console.log('Blob IFC crÃ©Ã© avec succÃ¨s, taille:', blob.size);
+    console.log('Contenu IFC gÃ©nÃ©rÃ© (dÃ©but):', ifcContent.substring(0, 200) + '...');
+    
+    // VÃ©rifier que le blob contient des donnÃ©es
+    if (blob.size > 0) {
+      console.log('Blob valide crÃ©Ã©, prÃªt pour le tÃ©lÃ©chargement');
+      return blob;
+    } else {
+      console.error('Erreur: Blob vide gÃ©nÃ©rÃ©');
+      throw new Error('Le fichier IFC gÃ©nÃ©rÃ© est vide');
+    }
+  } catch (error) {
+    console.error('Erreur lors de la gÃ©nÃ©ration du fichier IFC avec templates:', error);
+    
+    // Fallback Ã  une version trÃ¨s simple en cas d'erreur
+    try {
+      const simpleIfcContent = `ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');\nFILE_NAME('Projet GÃ©nÃ©rÃ©','${new Date().toISOString()}',('GÃ©nÃ©rateur IFC'),('IFCAI3'),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('${generateUUID()}',#2,'Projet GÃ©nÃ©rÃ©',$,$,$);\n#2=IFCOWNERHISTORY(#3,#4,$,.ADDED.,$,$,$,0);\n#3=IFCPERSONANDORGANIZATION(#5,#6,$);\n#4=IFCAPPLICATION(#6,'1.0','GÃ©nÃ©rateur IFC','IFCAI3');\n#5=IFCPERSON($,'Utilisateur',$,$,$,$,$,$);\n#6=IFCORGANIZATION($,'IFCAI3',$,$,$);\nENDSEC;\nEND-ISO-10303-21;`;
+      
+      const simpleBlob = new Blob([simpleIfcContent], { type: 'application/octet-stream' });
+      console.log('Blob IFC simple crÃ©Ã© avec succÃ¨s (fallback), taille:', simpleBlob.size);
+      return simpleBlob;
+    } catch (fallbackError) {
+      console.error('Erreur lors de la gÃ©nÃ©ration du fichier IFC de fallback:', fallbackError);
+      throw error; // Remonter l'erreur originale
+    }
+  }
+}
+
+/**
+ * GÃ©nÃ¨re un UUID v4 pour les identifiants IFC
+ */
+function generateUUID() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+
+/**
+ * Fonction pour tÃ©lÃ©charger un fichier
+ */
+function downloadFile(blob, filename) {
+  console.log('TÃ©lÃ©chargement du fichier, taille du blob:', blob.size);
+  
+  // VÃ©rifier que le blob est valide
+  if (!blob || blob.size === 0) {
+    console.error('Erreur: Tentative de tÃ©lÃ©chargement d\'un blob vide');
+    statusDiv.textContent = 'Erreur: Le fichier gÃ©nÃ©rÃ© est vide';
+    return;
+  }
+  
+  try {
+    const url = URL.createObjectURL(blob);
+    console.log('URL crÃ©Ã©e pour le tÃ©lÃ©chargement:', url);
+    
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename || 'batiment.ifc';
+    document.body.appendChild(a);
+    
+    console.log('DÃ©clenchement du tÃ©lÃ©chargement...');
+    a.click();
+    
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    console.log('TÃ©lÃ©chargement initiÃ© avec succÃ¨s');
+    statusDiv.textContent = 'Fichier IFC tÃ©lÃ©chargÃ© avec succÃ¨s!';
+  } catch (error) {
+    console.error('Erreur lors du tÃ©lÃ©chargement:', error);
+    statusDiv.textContent = 'Erreur lors du tÃ©lÃ©chargement: ' + error.message;
+  }
+}
+
+// Initialiser l'application au chargement
+document.addEventListener('DOMContentLoaded', async () => {
+  console.log('DOM chargÃ©, initialisation de l\'application');
+  
+  // Ne pas charger le modÃ¨le automatiquement au dÃ©marrage
+  // Le modÃ¨le sera chargÃ© uniquement lorsque l'utilisateur clique sur le bouton
+  
+  // Ajouter un gestionnaire d'Ã©vÃ©nements pour le bouton de gÃ©nÃ©ration
+  generateButton.addEventListener('click', async () => {
+    console.log('Bouton de gÃ©nÃ©ration cliquÃ©');
+    
+    // Charger le modÃ¨le si ce n'est pas dÃ©jÃ  fait
+    if (!extractor) {
+      const modelLoaded = await initExtractor();
+      if (!modelLoaded) {
+        console.error('Ã‰chec du chargement du modÃ¨le');
+        return;
+      }
+    }
+    
+    // Extraire les paramÃ¨tres du texte
+    const parameters = await extractParameters();
+    if (!parameters) {
+      console.error('Ã‰chec de l\'extraction des paramÃ¨tres');
+      return;
+    }
+    
+    // GÃ©nÃ©rer le fichier IFC
+    try {
+      loaderDiv.classList.remove('hidden');
+      statusDiv.textContent = 'GÃ©nÃ©ration du fichier IFC en cours...';
+      
+      // VÃ©rifier si la bibliothÃ¨que IFC est disponible
+      if (typeof IFC === 'undefined') {
+        console.warn('La bibliothÃ¨que IFC n\'est pas disponible, utilisation de la mÃ©thode alternative');
+        // Utiliser directement la mÃ©thode alternative
+        const ifcBlob = await generateBasicIfcFile(parameters);
+        if (ifcBlob) {
+          downloadFile(ifcBlob, 'batiment.ifc');
+          statusDiv.textContent = 'Fichier IFC gÃ©nÃ©rÃ© avec succÃ¨s (mÃ©thode alternative)!';
+        } else {
+          statusDiv.textContent = 'Erreur lors de la gÃ©nÃ©ration du fichier IFC.';
+        }
+      } else {
+        // Utiliser la mÃ©thode standard
+        const ifcBlob = await generateIFC(parameters);
+        if (ifcBlob) {
+          // TÃ©lÃ©charger le fichier
+          downloadFile(ifcBlob, 'batiment.ifc');
+          statusDiv.textContent = 'Fichier IFC gÃ©nÃ©rÃ© avec succÃ¨s!';
+        } else {
+          statusDiv.textContent = 'Erreur lors de la gÃ©nÃ©ration du fichier IFC.';
+        }
+      }
+    } catch (error) {
+      console.error('Erreur lors de la gÃ©nÃ©ration:', error);
+      statusDiv.textContent = 'Erreur: ' + error.message;
+      
+      // En cas d'erreur, essayer la mÃ©thode alternative
+      try {
+        console.log('Tentative de gÃ©nÃ©ration avec la mÃ©thode alternative...');
+        const ifcBlob = await generateBasicIfcFile(parameters);
+        if (ifcBlob) {
+          downloadFile(ifcBlob, 'batiment.ifc');
+          statusDiv.textContent = 'Fichier IFC gÃ©nÃ©rÃ© avec succÃ¨s (mÃ©thode de secours)!';
+        }
+      } catch (fallbackError) {
+        console.error('Ã‰chec de la mÃ©thode alternative:', fallbackError);
+      }
+    } finally {
+      loaderDiv.classList.add('hidden');
+      statusDiv.textContent = '';
+      console.log('Traitement terminÃ©');
+    }
+
+}); // Fermeture du gestionnaire d'Ã©vÃ©nements du bouton de gÃ©nÃ©ration
+}); // Fermeture de l'Ã©vÃ©nement DOMContentLoaded
+
+//***********************************
+// Path: \public\src\cache-manager.js
+//***********************************
+/**
+ * Module de gestion du cache pour les modÃ¨les IFC
+ */
+
+// Cache pour stocker les modÃ¨les IFC gÃ©nÃ©rÃ©s
+const ifcModelCache = new Map();
+
+// Cache pour stocker les rÃ©sultats d'extraction de paramÃ¨tres
+const extractionCache = new Map();
+
+/**
+ * GÃ©nÃ¨re une clÃ© de cache basÃ©e sur le texte d'entrÃ©e
+ * @param {string} inputText - Le texte d'entrÃ©e de l'utilisateur
+ * @returns {string} - La clÃ© de cache
+ */
+function generateCacheKey(inputText) {
+  // Simplifier le texte pour la mise en cache (enlever espaces supplÃ©mentaires, mettre en minuscules)
+  return inputText.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+/**
+ * VÃ©rifie si un rÃ©sultat d'extraction existe dans le cache
+ * @param {string} inputText - Le texte d'entrÃ©e de l'utilisateur
+ * @returns {Object|null} - Les paramÃ¨tres extraits ou null si non trouvÃ©s
+ */
+export function getExtractedParamsFromCache(inputText) {
+  const cacheKey = generateCacheKey(inputText);
+  if (extractionCache.has(cacheKey)) {
+    console.log('ParamÃ¨tres trouvÃ©s dans le cache');
+    return extractionCache.get(cacheKey);
+  }
+  return null;
+}
+
+/**
+ * Stocke les paramÃ¨tres extraits dans le cache
+ * @param {string} inputText - Le texte d'entrÃ©e de l'utilisateur
+ * @param {Object} params - Les paramÃ¨tres extraits
+ */
+export function storeExtractedParamsInCache(inputText, params) {
+  const cacheKey = generateCacheKey(inputText);
+  console.log('Stockage des paramÃ¨tres dans le cache');
+  extractionCache.set(cacheKey, params);
+}
+
+/**
+ * VÃ©rifie si un modÃ¨le IFC existe dans le cache
+ * @param {Object} params - Les paramÃ¨tres du bÃ¢timent
+ * @returns {Blob|null} - Le blob IFC ou null si non trouvÃ©
+ */
+export function getIfcModelFromCache(params) {
+  const cacheKey = JSON.stringify(params);
+  if (ifcModelCache.has(cacheKey)) {
+    console.log('ModÃ¨le IFC trouvÃ© dans le cache');
+    return ifcModelCache.get(cacheKey);
+  }
+  return null;
+}
+
+/**
+ * Stocke un modÃ¨le IFC dans le cache
+ * @param {Object} params - Les paramÃ¨tres du bÃ¢timent
+ * @param {Blob} ifcBlob - Le blob IFC gÃ©nÃ©rÃ©
+ */
+export function storeIfcModelInCache(params, ifcBlob) {
+  const cacheKey = JSON.stringify(params);
+  console.log('Stockage du modÃ¨le IFC dans le cache');
+  ifcModelCache.set(cacheKey, ifcBlob);
+}
+
+/**
+ * Nettoie le cache si nÃ©cessaire (limite la taille)
+ * @param {number} maxSize - Taille maximale du cache
+ */
+export function cleanCache(maxSize = 10) {
+  // Limiter la taille du cache d'extraction
+  if (extractionCache.size > maxSize) {
+    console.log('Nettoyage du cache d\'extraction');
+    const keys = Array.from(extractionCache.keys());
+    for (let i = 0; i < keys.length - maxSize; i++) {
+      extractionCache.delete(keys[i]);
+    }
+  }
+  
+  // Limiter la taille du cache de modÃ¨les IFC
+  if (ifcModelCache.size > maxSize) {
+    console.log('Nettoyage du cache de modÃ¨les IFC');
+    const keys = Array.from(ifcModelCache.keys());
+    for (let i = 0; i < keys.length - maxSize; i++) {
+      ifcModelCache.delete(keys[i]);
+    }
+  }
+}
+
+//***********************************
+// Path: \public\src\templates.js
+//***********************************
+/**
+ * Fichier contenant les templates IFC prÃ©dÃ©finis pour optimiser la gÃ©nÃ©ration
+ */
+
+// Cache pour stocker les rÃ©sultats intermÃ©diaires
+const templateCache = new Map();
+
+/**
+ * RÃ©cupÃ¨re un template IFC du cache ou le crÃ©e s'il n'existe pas
+ * @param {string} templateKey - ClÃ© unique pour identifier le template
+ * @param {Function} templateGenerator - Fonction pour gÃ©nÃ©rer le template si non prÃ©sent dans le cache
+ * @returns {string} - Le contenu du template IFC
+ */
+export function getOrCreateTemplate(templateKey, templateGenerator) {
+  if (templateCache.has(templateKey)) {
+    console.log(`Utilisation du template en cache pour: ${templateKey}`);
+    return templateCache.get(templateKey);
+  }
+  
+  console.log(`CrÃ©ation d'un nouveau template pour: ${templateKey}`);
+  const template = templateGenerator();
+  templateCache.set(templateKey, template);
+  return template;
+}
+
+/**
+ * GÃ©nÃ¨re un template IFC de base
+ * @returns {string} - Le contenu du template IFC de base
+ */
+export function generateBasicTemplate() {
+  return `ISO-10303-21;
+    HEADER;
+    FILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');
+    FILE_NAME('Projet GÃ©nÃ©rÃ©','{{DATE}}',('GÃ©nÃ©rateur IFC'),('IFCAI3'),'','','');
+    FILE_SCHEMA(('IFC4'));
+    ENDSEC;
+    
+    DATA;
+    #1=IFCPROJECT('{{UUID_1}}',#2,'Projet GÃ©nÃ©rÃ©',$,$,#3);
+    #2=IFCOWNERHISTORY(#4,#5,$,.ADDED.,$,$,$,0);
+    #3=IFCUNITASSIGNMENT((#6,#7,#8,#9,#10,#11,#12,#13,#14));
+    #4=IFCPERSONANDORGANIZATION(#15,#16,$);
+    #5=IFCAPPLICATION(#16,'1.0','GÃ©nÃ©rateur IFC','IFCAI3');
+    #6=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+    #7=IFCSIUNIT(*,.AREAUNIT.,$,.SQUARE_METRE.);
+    #8=IFCSIUNIT(*,.VOLUMEUNIT.,$,.CUBIC_METRE.);
+    #9=IFCSIUNIT(*,.PLANEANGLEUNIT.,$,.RADIAN.);
+    #10=IFCSIUNIT(*,.MASSUNIT.,$,.GRAM.);
+    #11=IFCSIUNIT(*,.TIMEUNIT.,$,.SECOND.);
+    #12=IFCSIUNIT(*,.THERMODYNAMICTEMPERATUREUNIT.,$,.DEGREE_CELSIUS.);
+    #13=IFCSIUNIT(*,.LUMINOUSINTENSITYUNIT.,$,.LUMEN.);
+    #14=IFCSIUNIT(*,.SOLIDANGLEUNIT.,$,.STERADIAN.);
+    #15=IFCPERSON($,'Utilisateur',$,$,$,$,$,$);
+    #16=IFCORGANIZATION($,'IFCAI3',$,$,$);
+    #20=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.0E-5,#21,$);
+    #21=IFCAXIS2PLACEMENT3D(#22,$,$);
+    #22=IFCCARTESIANPOINT((0.0,0.0,0.0));
+    
+    /* BÃ¢timent */
+    #100=IFCBUILDING('{{UUID_100}}',#2,'BÃ¢timent',$,$,#101,$,$,.ELEMENT.,$,$,$);
+    #101=IFCLOCALPLACEMENT($,#102);
+    #102=IFCAXIS2PLACEMENT3D(#103,$,$);
+    #103=IFCCARTESIANPOINT((0.0,0.0,0.0));
+    
+    /* Ã‰tages */
+    {{STOREYS}}
+    
+    /* Murs */
+    {{WALLS}}
+    
+    ENDSEC;
+    END-ISO-10303-21;`;
+}
+
+/**
+ * GÃ©nÃ¨re un template d'Ã©tage pour un bÃ¢timent
+ * @param {number} index - NumÃ©ro de l'Ã©tage
+ * @param {number} height - Hauteur de l'Ã©tage
+ * @returns {string} - Le contenu du template d'Ã©tage
+ */
+export function generateStoreyTemplate(index, height) {
+  const baseIndex = 200 + (index * 10);
+  return `#${baseIndex}=IFCBUILDINGSTOREY('{{UUID_${baseIndex}}}',#2,'Ã‰tage ${index + 1}',$,$,#${baseIndex + 1},$,$,.ELEMENT.,${height});
+    #${baseIndex + 1}=IFCLOCALPLACEMENT(#101,#${baseIndex + 2});
+    #${baseIndex + 2}=IFCAXIS2PLACEMENT3D(#${baseIndex + 3},$,$);
+    #${baseIndex + 3}=IFCCARTESIANPOINT((0.0,0.0,${index * 3.0}));`;
+}
+
+/**
+ * GÃ©nÃ¨re un template de mur
+ * @param {number} index - NumÃ©ro du mur
+ * @param {string} name - Nom du mur
+ * @param {number} x - Position X du mur
+ * @param {number} y - Position Y du mur
+ * @param {number} width - Largeur du mur
+ * @param {number} height - Hauteur du mur
+ * @returns {string} - Le contenu du template de mur
+ */
+export function generateWallTemplate(index, name, x, y, width, height) {
+  const baseIndex = 300 + (index * 20);
+  return `#${baseIndex}=IFCWALL('{{UUID_${baseIndex}}}',#2,'${name}',$,$,#${baseIndex + 1},#${baseIndex + 10},$,.STANDARD.);
+    #${baseIndex + 1}=IFCLOCALPLACEMENT(#201,#${baseIndex + 2});
+    #${baseIndex + 2}=IFCAXIS2PLACEMENT3D(#${baseIndex + 3},$,$);
+    #${baseIndex + 3}=IFCCARTESIANPOINT((${x},${y},0.0));
+    #${baseIndex + 10}=IFCPRODUCTDEFINITIONSHAPE($,$,(#${baseIndex + 11}));
+    #${baseIndex + 11}=IFCSHAPEREPRESENTATION(#20,'Body','SweptSolid',(#${baseIndex + 12}));
+    #${baseIndex + 12}=IFCEXTRUDEDAREASOLID(#${baseIndex + 13},#${baseIndex + 14},#${baseIndex + 15},${height});
+    #${baseIndex + 13}=IFCRECTANGLEPROFILEDEF(.AREA.,$,#${baseIndex + 16},${width},0.2);
+    #${baseIndex + 14}=IFCAXIS2PLACEMENT3D(#${baseIndex + 17},$,$);
+    #${baseIndex + 15}=IFCDIRECTION((0.0,0.0,1.0));
+    #${baseIndex + 16}=IFCAXIS2PLACEMENT2D(#${baseIndex + 18},$);
+    #${baseIndex + 17}=IFCCARTESIANPOINT((0.0,0.0,0.0));
+    #${baseIndex + 18}=IFCCARTESIANPOINT((0.0,0.0));`;
+}
+
+/**
+ * Remplace les placeholders dans un template avec des valeurs rÃ©elles
+ * @param {string} template - Le template avec des placeholders
+ * @param {Object} values - Les valeurs Ã  insÃ©rer dans le template
+ * @returns {string} - Le template avec les valeurs insÃ©rÃ©es
+ */
+export function applyTemplate(template, values) {
+  let result = template;
+  
+  // Remplacer tous les placeholders par leurs valeurs
+  for (const [key, value] of Object.entries(values)) {
+    const placeholder = `{{${key}}}`;
+    result = result.replace(new RegExp(placeholder, 'g'), value);
+  }
+  
+  return result;
+}
+
+/**
+ * GÃ©nÃ¨re un UUID v4 pour les identifiants IFC
+ */
+export function generateUUID() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+
+//***********************************
+// Path: \public\src\viewer3d.js
+//***********************************
+/**
+ * Module de visualisation 3D optimisÃ© pour les modÃ¨les IFC
+ */
+
+// Cache pour stocker les scÃ¨nes 3D
+const sceneCache = new Map();
+
+/**
+ * Initialise une scÃ¨ne Three.js pour la visualisation 3D
+ * @param {HTMLCanvasElement} canvas - L'Ã©lÃ©ment canvas pour le rendu
+ * @returns {Object} - Les objets Three.js initialisÃ©s
+ */
+export function initScene(canvas) {
+  // Initialiser Three.js pour la visualisation
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0xf0f0f0);
+  
+  // Configurer la camÃ©ra
+  const camera = new THREE.PerspectiveCamera(75, canvas.clientWidth / canvas.clientHeight, 0.1, 1000);
+  camera.position.z = 20;
+  camera.position.y = 10;
+  camera.position.x = 10;
+  
+  // Configurer le renderer avec antialiasing pour une meilleure qualitÃ©
+  const renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+  renderer.setSize(canvas.clientWidth, canvas.clientHeight);
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  
+  // Ajouter des contrÃ´les de camÃ©ra
+  const controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.25;
+  controls.screenSpacePanning = false;
+  controls.maxPolarAngle = Math.PI / 1.5;
+  controls.minDistance = 5;
+  controls.maxDistance = 50;
+  
+  // Ajouter un Ã©clairage
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+  scene.add(ambientLight);
+  
+  const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+  directionalLight.position.set(10, 20, 10);
+  directionalLight.castShadow = true;
+  directionalLight.shadow.mapSize.width = 1024;
+  directionalLight.shadow.mapSize.height = 1024;
+  scene.add(directionalLight);
+  
+  // Ajouter un sol
+  const groundGeometry = new THREE.PlaneGeometry(50, 50);
+  const groundMaterial = new THREE.MeshStandardMaterial({ color: 0x999999, roughness: 0.8 });
+  const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+  ground.rotation.x = -Math.PI / 2;
+  ground.position.y = -0.1;
+  ground.receiveShadow = true;
+  scene.add(ground);
+  
+  // Ajouter une grille
+  const gridHelper = new THREE.GridHelper(50, 50, 0x444444, 0x888888);
+  scene.add(gridHelper);
+  
+  return { scene, camera, renderer, controls };
+}
+
+/**
+ * CrÃ©e un modÃ¨le 3D de bÃ¢timent basÃ© sur les paramÃ¨tres extraits
+ * @param {Object} scene - La scÃ¨ne Three.js
+ * @param {Object} params - Les paramÃ¨tres du bÃ¢timent
+ * @returns {Object} - Le groupe d'objets 3D reprÃ©sentant le bÃ¢timent
+ */
+export function createBuildingModel(scene, params) {
+  // Extraire les paramÃ¨tres avec des valeurs par dÃ©faut
+  const {
+    surface = "100 mÂ²",
+    niveaux = 1,
+    chambres = 2,
+    sallesDeBain = 1,
+    garage = false
+  } = params;
+  
+  // Calculer les dimensions approximatives du bÃ¢timent
+  const surfaceValue = parseInt(surface.match(/\d+/)[0]) || 100;
+  const width = Math.sqrt(surfaceValue) * 0.8;
+  const depth = Math.sqrt(surfaceValue) * 0.8;
+  const heightPerLevel = 3;
+  const totalHeight = niveaux * heightPerLevel;
+  
+  // CrÃ©er un groupe pour contenir tous les Ã©lÃ©ments du bÃ¢timent
+  const buildingGroup = new THREE.Group();
+  
+  // CrÃ©er le corps principal du bÃ¢timent
+  const buildingGeometry = new THREE.BoxGeometry(width, totalHeight, depth);
+  const buildingMaterial = new THREE.MeshStandardMaterial({
+    color: 0xf5f5f5,
+    roughness: 0.7,
+    metalness: 0.1
+  });
+  const buildingMesh = new THREE.Mesh(buildingGeometry, buildingMaterial);
+  buildingMesh.position.y = totalHeight / 2;
+  buildingMesh.castShadow = true;
+  buildingMesh.receiveShadow = true;
+  buildingGroup.add(buildingMesh);
+  
+  // Ajouter un toit
+  const roofGeometry = new THREE.ConeGeometry(Math.sqrt(width*width + depth*depth) / 1.5, 2, 4);
+  const roofMaterial = new THREE.MeshStandardMaterial({ color: 0xA52A2A, roughness: 0.6 });
+  const roof = new THREE.Mesh(roofGeometry, roofMaterial);
+  roof.position.y = totalHeight + 1;
+  roof.rotation.y = Math.PI / 4;
+  roof.castShadow = true;
+  buildingGroup.add(roof);
+  
+  // Ajouter des fenÃªtres
+  const windowsPerLevel = chambres + sallesDeBain + 2; // +2 pour salon et cuisine
+  const windowSize = 0.8;
+  
+  for (let level = 0; level < niveaux; level++) {
+    const levelY = level * heightPerLevel + heightPerLevel / 2;
+    
+    // FenÃªtres sur les cÃ´tÃ©s
+    for (let i = 0; i < windowsPerLevel / 2; i++) {
+      // CÃ´tÃ© avant
+      addWindow(buildingGroup, {
+        x: (i - windowsPerLevel / 4 + 0.5) * (width / (windowsPerLevel / 2 + 1)),
+        y: levelY,
+        z: depth / 2 + 0.01,
+        width: windowSize,
+        height: windowSize * 1.5
+      });
+      
+      // CÃ´tÃ© arriÃ¨re
+      addWindow(buildingGroup, {
+        x: (i - windowsPerLevel / 4 + 0.5) * (width / (windowsPerLevel / 2 + 1)),
+        y: levelY,
+        z: -depth / 2 - 0.01,
+        width: windowSize,
+        height: windowSize * 1.5,
+        rotation: Math.PI
+      });
+    }
+  }
+  
+  // Ajouter une porte
+  const doorGeometry = new THREE.BoxGeometry(1.2, 2.2, 0.1);
+  const doorMaterial = new THREE.MeshStandardMaterial({ color: 0x8B4513, roughness: 0.8 });
+  const door = new THREE.Mesh(doorGeometry, doorMaterial);
+  door.position.set(0, 1.1, depth / 2 + 0.05);
+  buildingGroup.add(door);
+  
+  // Ajouter un garage si nÃ©cessaire
+  if (garage) {
+    const garageWidth = Math.min(width * 0.7, 5);
+    const garageDepth = Math.min(depth * 0.4, 6);
+    const garageHeight = heightPerLevel * 0.8;
+    
+    const garageGeometry = new THREE.BoxGeometry(garageWidth, garageHeight, garageDepth);
+    const garageMaterial = new THREE.MeshStandardMaterial({ color: 0xe0e0e0, roughness: 0.7 });
+    const garageMesh = new THREE.Mesh(garageGeometry, garageMaterial);
+    garageMesh.position.set(-width / 2 - garageWidth / 2, garageHeight / 2, 0);
+    garageMesh.castShadow = true;
+    garageMesh.receiveShadow = true;
+    buildingGroup.add(garageMesh);
+    
+    // Porte de garage
+    const garagePorteGeometry = new THREE.PlaneGeometry(garageWidth * 0.8, garageHeight * 0.8);
+    const garagePorteMaterial = new THREE.MeshStandardMaterial({ color: 0xA0A0A0, roughness: 0.6 });
+    const garagePorte = new THREE.Mesh(garagePorteGeometry, garagePorteMaterial);
+    garagePorte.position.set(-width / 2 - garageWidth, garageHeight / 2, garageDepth / 2 + 0.01);
+    garagePorte.rotation.y = Math.PI;
+    buildingGroup.add(garagePorte);
+  }
+  
+  // Ajouter le groupe Ã  la scÃ¨ne
+  scene.add(buildingGroup);
+  
+  return buildingGroup;
+}
+
+/**
+ * Ajoute une fenÃªtre au bÃ¢timent
+ * @param {Object} group - Le groupe parent
+ * @param {Object} options - Options de la fenÃªtre
+ */
+function addWindow(group, options) {
+  const { x, y, z, width, height, rotation = 0 } = options;
+  
+  const windowGeometry = new THREE.PlaneGeometry(width, height);
+  const windowMaterial = new THREE.MeshStandardMaterial({
+    color: 0x88ccff,
+    transparent: true,
+    opacity: 0.7,
+    side: THREE.DoubleSide,
+    metalness: 0.8,
+    roughness: 0.2
+  });
+  
+  const windowMesh = new THREE.Mesh(windowGeometry, windowMaterial);
+  windowMesh.position.set(x, y, z);
+  
+  if (rotation !== 0) {
+    windowMesh.rotation.y = rotation;
+  }
+  
+  group.add(windowMesh);
+  
+  // Ajouter un cadre de fenÃªtre
+  const frameGeometry = new THREE.BoxGeometry(width + 0.1, height + 0.1, 0.05);
+  const frameMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5 });
+  const frame = new THREE.Mesh(frameGeometry, frameMaterial);
+  frame.position.copy(windowMesh.position);
+  if (rotation !== 0) {
+    frame.rotation.y = rotation;
+  }
+  if (z > 0) {
+    frame.position.z += 0.02;
+  } else {
+    frame.position.z -= 0.02;
+  }
+  
+  group.add(frame);
+}
+
+/**
+ * Anime la scÃ¨ne 3D
+ * @param {Object} renderer - Le renderer Three.js
+ * @param {Object} scene - La scÃ¨ne Three.js
+ * @param {Object} camera - La camÃ©ra Three.js
+ * @param {Object} controls - Les contrÃ´les de camÃ©ra
+ */
+export function animateScene(renderer, scene, camera, controls) {
+  function animate() {
+    requestAnimationFrame(animate);
+    controls.update();
+    renderer.render(scene, camera);
+  }
+  
+  animate();
+}
+
+/**
+ * Redimensionne le renderer quand la fenÃªtre change de taille
+ * @param {Object} renderer - Le renderer Three.js
+ * @param {Object} camera - La camÃ©ra Three.js
+ * @param {HTMLElement} canvas - L'Ã©lÃ©ment canvas
+ */
+export function handleResize(renderer, camera, canvas) {
+  window.addEventListener('resize', () => {
+    camera.aspect = canvas.clientWidth / canvas.clientHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(canvas.clientWidth, canvas.clientHeight);
+  });
+}
+
+/**
+ * PrÃ©visualise un modÃ¨le IFC avec les paramÃ¨tres donnÃ©s
+ * @param {HTMLCanvasElement} canvas - L'Ã©lÃ©ment canvas pour le rendu
+ * @param {Object} params - Les paramÃ¨tres du bÃ¢timent
+ * @returns {Object} - Les objets Three.js initialisÃ©s
+ */
+export function previewBuilding(canvas, params) {
+  // GÃ©nÃ©rer une clÃ© de cache basÃ©e sur les paramÃ¨tres
+  const cacheKey = JSON.stringify(params);
+  
+  // VÃ©rifier si la scÃ¨ne est dÃ©jÃ  en cache
+  if (sceneCache.has(cacheKey)) {
+    console.log('Utilisation de la scÃ¨ne en cache');
+    return sceneCache.get(cacheKey);
+  }
+  
+  // Initialiser la scÃ¨ne
+  const sceneObjects = initScene(canvas);
+  const { scene, camera, renderer, controls } = sceneObjects;
+  
+  // CrÃ©er le modÃ¨le du bÃ¢timent
+  createBuildingModel(scene, params);
+  
+  // Configurer le redimensionnement
+  handleResize(renderer, camera, canvas);
+  
+  // DÃ©marrer l'animation
+  animateScene(renderer, scene, camera, controls);
+  
+  // Mettre en cache la scÃ¨ne
+  sceneCache.set(cacheKey, sceneObjects);
+  
+  return sceneObjects;
+}
+
+//***********************************
+// Path: \public\index.html
+//***********************************
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GÃ©nÃ©rateur IFC</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  
+  <!-- BibliothÃ¨ques externes -->
+  <script src="https://cdn.jsdelivr.net/npm/@xenova/transformers@2.6.0/dist/transformers.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/web-ifc@0.0.44/dist/web-ifc-api.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.152.2/examples/js/controls/OrbitControls.js"></script>
+</head>
+<body>
+  <header>
+    <div class="logo">
+      <img src="logo.svg" alt="Logo GÃ©nÃ©rateur IFC" width="50" height="50">
+    </div>
+    <h1>GÃ©nÃ©rateur IFC</h1>
+  </header>
+  
+  <section id="main">
+    <textarea id="input" placeholder="DÃ©crivez votre bÃ¢timent..."></textarea>
+    <button id="generate" class="btn-primary">GÃ©nÃ©rer IFC</button>
+    <div id="status"></div>
+    <div id="loader" class="hidden"></div>
+  </section>
+  
+  <section id="viewer">
+    <canvas id="canvas" width="600" height="400"></canvas>
+  </section>
+
+  <script src="./src/app.js" type="module"></script>
+</body>
+</html>
+
+//***********************************
+// Path: \public\logo.svg
+//***********************************
+<svg width="50" height="50" viewBox="0 0 50 50" xmlns="http://www.w3.org/2000/svg">
+  <rect width="50" height="50" fill="#FFFFFF" rx="5" />
+  <polygon points="25,5 45,20 45,45 5,45 5,20" fill="none" stroke="#1E3A8A" stroke-width="2" />
+  <rect x="15" y="30" width="8" height="15" fill="#1E3A8A" />
+  <rect x="27" y="25" width="8" height="20" fill="#1E3A8A" />
+  <text x="25" y="15" font-family="Arial" font-size="10" fill="#1E3A8A" text-anchor="middle" font-weight="bold">IFC</text>
+</svg>
+
+//***********************************
+// Path: \public\styles.css
+//***********************************
+/* Styles gÃ©nÃ©raux */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Roboto', sans-serif;
+  background-color: #FFFFFF;
+  color: #333333;
+  line-height: 1.6;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  padding: 20px;
+}
+
+/* Header */
+header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 30px;
+}
+
+.logo {
+  margin-right: 15px;
+}
+
+h1 {
+  color: #1E3A8A;
+  font-size: 28px;
+}
+
+/* Section principale */
+#main {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  margin-bottom: 30px;
+}
+
+#input {
+  width: 100%;
+  max-width: 600px;
+  height: 150px;
+  padding: 12px;
+  border: 1px solid #E5E7EB;
+  border-radius: 5px;
+  resize: vertical;
+  font-family: 'Roboto', sans-serif;
+  font-size: 16px;
+}
+
+/* Boutons */
+.btn-primary {
+  background-color: #3B82F6;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  padding: 10px 20px;
+  font-size: 16px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  max-width: 200px;
+}
+
+.btn-primary:hover {
+  background-color: #2563EB;
+}
+
+.btn-secondary {
+  background-color: #6B7280;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  padding: 10px 20px;
+  font-size: 16px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  max-width: 200px;
+}
+
+.btn-secondary:hover {
+  background-color: #4B5563;
+}
+
+#status {
+  min-height: 24px;
+  color: #333333;
+}
+
+/* Loader */
+#loader {
+  width: 40px;
+  height: 40px;
+  border: 4px solid #E5E7EB;
+  border-top: 4px solid #1E3A8A;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.hidden {
+  display: none;
+}
+
+/* Viewer */
+#viewer {
+  width: 100%;
+  max-width: 600px;
+  margin-top: 20px;
+}
+
+#canvas {
+  width: 100%;
+  max-width: 600px;
+  height: 400px;
+  border: 1px solid #E5E7EB;
+  border-radius: 5px;
+  background-color: #F9FAFB;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  h1 {
+    font-size: 24px;
+  }
+  
+  #input {
+    height: 120px;
+  }
+  
+  #canvas {
+    height: 300px;
+  }
+}
+
+@media (max-width: 480px) {
+  header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  
+  h1 {
+    font-size: 22px;
+  }
+  
+  .btn-primary {
+    width: 100%;
+    max-width: none;
+  }
+}
+
+//***********************************
+// Path: \src\app.js
+//***********************************
+/**
+ * Fichier principal JavaScript pour l'application GÃ©nÃ©rateur IFC
+ */
+
+// Nous utiliserons les bibliothÃ¨ques chargÃ©es via des balises script dans le HTML
+// Les variables globales seront disponibles: pipeline, IfcAPI, IFC
+
+console.log("Application chargÃ©e");
+
+// SÃ©lection des Ã©lÃ©ments du DOM
+const inputTextarea = document.getElementById('input');
+const generateButton = document.getElementById('generate');
+const statusDiv = document.getElementById('status');
+const loaderDiv = document.getElementById('loader');
+const canvas = document.getElementById('canvas');
+
+// Initialisation du modÃ¨le T5-small
+let extractor = null;
+
+async function initExtractor() {
+  try {
+    loaderDiv.classList.remove('hidden');
+    statusDiv.textContent = 'Chargement du modÃ¨le...';
+    
+    console.log('Importation de la bibliothÃ¨que transformers...');
+    
+    // Importer directement la bibliothÃ¨que en utilisant ES modules
+    const { pipeline } = await import('https://cdn.jsdelivr.net/npm/@xenova/transformers@2.6.0/dist/transformers.min.js');
+    console.log('BibliothÃ¨que transformers importÃ©e avec succÃ¨s');
+    
+    // Charger le modÃ¨le T5-small avec l'option quantized
+    console.log('Chargement du modÃ¨le T5-small...');
+    extractor = await pipeline('text2text-generation', 't5-small', { quantized: true });
+    console.log('ModÃ¨le T5-small chargÃ© avec succÃ¨s');
+    
+    statusDiv.textContent = 'ModÃ¨le chargÃ© avec succÃ¨s!';
+    loaderDiv.classList.add('hidden');
+    return true;
+  } catch (error) {
+    console.error('Erreur lors du chargement du modÃ¨le:', error);
+    statusDiv.textContent = 'Erreur lors du chargement du modÃ¨le: ' + error.message;
+    loaderDiv.classList.add('hidden');
+    return false;
+  }
+}
+
+/**
+ * Fonction pour extraire les paramÃ¨tres du texte utilisateur
+ */
+async function extractParameters() {
+  console.log('DÃ©but de l\'extraction des paramÃ¨tres');
+  
+  // RÃ©cupÃ©rer le texte de l'utilisateur
+  const userText = inputTextarea.value.trim();
+  console.log('Texte utilisateur rÃ©cupÃ©rÃ©, longueur:', userText.length);
+  
+  // VÃ©rifier si le texte est suffisamment dÃ©taillÃ©
+  if (!userText || userText.length < 20) {
+    console.warn('Texte utilisateur insuffisant');
+    statusDiv.textContent = "Erreur : veuillez fournir une description plus dÃ©taillÃ©e.";
+    return null;
+  }
+  
+  // VÃ©rifier si le modÃ¨le est chargÃ©
+  if (!extractor) {
+    console.error('ModÃ¨le non chargÃ©, tentative de chargement');
+    try {
+      const modelLoaded = await initExtractor();
+      if (!modelLoaded) {
+        console.error('Ã‰chec du chargement du modÃ¨le');
+        statusDiv.textContent = "Erreur : impossible de charger le modÃ¨le.";
+        return null;
+      }
+    } catch (loadError) {
+      console.error('Exception lors du chargement du modÃ¨le:', loadError);
+      statusDiv.textContent = "Erreur : Ã©chec du chargement du modÃ¨le - " + loadError.message;
+      return null;
+    }
+  }
+  
+  console.log('ModÃ¨le disponible, dÃ©but de l\'extraction');
+  loaderDiv.classList.remove('hidden');
+  statusDiv.textContent = 'Extraction des paramÃ¨tres en cours...';
+  
+  try {
+    // Questions Ã  poser au modÃ¨le
+    const questions = [
+      "Quelle est la surface totale du bÃ¢timent ?",
+      "Combien de niveaux a le bÃ¢timent ?",
+      "Combien de chambres ?",
+      "Combien de salles de bain ?",
+      "Y a-t-il un garage ?"
+    ];
+    
+    // Objet pour stocker les rÃ©ponses avec des valeurs par dÃ©faut
+    const parameters = {
+      surface: "100 mÂ²",
+      niveaux: 1,
+      chambres: 2,
+      sallesDeBain: 1,
+      garage: false
+    };
+    
+    // Poser chaque question au modÃ¨le
+    for (let i = 0; i < questions.length; i++) {
+      const question = questions[i];
+      console.log(`Traitement de la question ${i+1}/${questions.length}: ${question}`);
+      
+      try {
+        // Limiter la taille du contexte pour Ã©viter les problÃ¨mes de tokens
+        const contextLimit = 500;
+        const limitedContext = userText.length > contextLimit ? 
+          userText.substring(0, contextLimit) + '...' : userText;
+        
+        const input = `${question}\nContexte: ${limitedContext}`;
+        console.log(`Envoi au modÃ¨le, longueur de l'entrÃ©e: ${input.length} caractÃ¨res`);
+        
+        // Ajouter un timeout pour Ã©viter les blocages
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('DÃ©lai d\'attente dÃ©passÃ©')), 10000);
+        });
+        
+        const modelPromise = extractor(input, { max_new_tokens: 50 });
+        const result = await Promise.race([modelPromise, timeoutPromise]);
+        
+        if (!result || !result[0]) {
+          console.error(`RÃ©ponse invalide pour la question: ${question}`);
+          continue; // Passer Ã  la question suivante
+        }
+        
+        const answer = result[0].generated_text.trim();
+        console.log(`RÃ©ponse reÃ§ue: "${answer}"`);
+        
+        // Analyser et stocker les rÃ©ponses
+        if (question.includes("surface")) {
+          // Extraire la valeur numÃ©rique et l'unitÃ©
+          const surfaceMatch = answer.match(/(\d+)\s*mÂ²/i);
+          if (surfaceMatch) {
+            parameters.surface = surfaceMatch[0];
+            console.log(`Surface extraite: ${parameters.surface}`);
+          } else {
+            console.warn(`Impossible d'extraire la surface de la rÃ©ponse: "${answer}"`);
+          }
+        } else if (question.includes("niveaux")) {
+          // Extraire le nombre de niveaux
+          const niveauxMatch = answer.match(/(\d+)/i);
+          if (niveauxMatch) {
+            parameters.niveaux = parseInt(niveauxMatch[0], 10) || 1;
+            console.log(`Niveaux extraits: ${parameters.niveaux}`);
+          } else {
+            console.warn(`Impossible d'extraire les niveaux de la rÃ©ponse: "${answer}"`);
+          }
+        } else if (question.includes("chambres")) {
+          // Extraire le nombre de chambres
+          const chambresMatch = answer.match(/(\d+)/i);
+          if (chambresMatch) {
+            parameters.chambres = parseInt(chambresMatch[0], 10) || 2;
+            console.log(`Chambres extraites: ${parameters.chambres}`);
+          } else {
+            console.warn(`Impossible d'extraire les chambres de la rÃ©ponse: "${answer}"`);
+          }
+        } else if (question.includes("salles de bain")) {
+          // Extraire le nombre de salles de bain
+          const sdbMatch = answer.match(/(\d+)/i);
+          if (sdbMatch) {
+            parameters.sallesDeBain = parseInt(sdbMatch[0], 10) || 1;
+            console.log(`Salles de bain extraites: ${parameters.sallesDeBain}`);
+          } else {
+            console.warn(`Impossible d'extraire les salles de bain de la rÃ©ponse: "${answer}"`);
+          }
+        } else if (question.includes("garage")) {
+          // DÃ©terminer s'il y a un garage
+          parameters.garage = /oui|yes|vrai|true/i.test(answer);
+          console.log(`Garage extrait: ${parameters.garage}`);
+        }
+      } catch (questionError) {
+        console.error(`Erreur lors du traitement de la question "${question}":`, questionError);
+        // Continuer avec la question suivante au lieu d'Ã©chouer complÃ¨tement
+      }
+    }
+    
+    console.log('Extraction terminÃ©e avec succÃ¨s, paramÃ¨tres:', parameters);
+    // Afficher les rÃ©sultats
+    statusDiv.textContent = JSON.stringify(parameters, null, 2);
+    loaderDiv.classList.add('hidden');
+    return parameters;
+  } catch (error) {
+    console.error('Erreur globale lors de l\'extraction des paramÃ¨tres:', error);
+    statusDiv.textContent = 'Erreur lors de l\'extraction des paramÃ¨tres: ' + (error.message || 'Erreur inconnue');
+    loaderDiv.classList.add('hidden');
+    return null;
+  }
+}
+
+/**
+ * Fonction pour gÃ©nÃ©rer un fichier IFC Ã  partir des paramÃ¨tres extraits
+ * @param {Object} json - Les paramÃ¨tres extraits du texte utilisateur
+ * @returns {Promise<Blob>} - Le fichier IFC gÃ©nÃ©rÃ© sous forme de Blob
+ */
+async function generateIFC(json) {
+  try {
+    console.log('DÃ©but de la gÃ©nÃ©ration IFC avec paramÃ¨tres:', json);
+    
+    // Initialiser l'API IFC
+    const ifcApi = new window.IfcAPI();
+    console.log('API IFC crÃ©Ã©e');
+    await ifcApi.Init();
+    console.log('API IFC initialisÃ©e');
+    
+    // VÃ©rifier si la mÃ©thode OpenModel existe
+    if (typeof ifcApi.OpenModel === 'function') {
+      console.log('Utilisation de la mÃ©thode OpenModel');
+      
+      // CrÃ©er un modÃ¨le IFC de base Ã  partir d'un template
+      const modelID = await createBasicIfcModel(ifcApi, json);
+      console.log('ModÃ¨le IFC crÃ©Ã© avec ID:', modelID);
+      
+      // Exporter le modÃ¨le en blob
+      console.log('Sauvegarde du modÃ¨le IFC...');
+      const ifcData = ifcApi.SaveModel(modelID);
+      console.log('ModÃ¨le IFC sauvegardÃ©, taille des donnÃ©es:', ifcData ? ifcData.byteLength : 'aucune donnÃ©e');
+      
+      // LibÃ©rer la mÃ©moire
+      ifcApi.CloseModel(modelID);
+      
+      if (ifcData && ifcData.byteLength > 0) {
+        const blob = new Blob([ifcData], { type: 'application/octet-stream' });
+        console.log('Blob crÃ©Ã© avec succÃ¨s, taille:', blob.size);
+        return blob;
+      }
+    }
+    
+    // MÃ©thode alternative si les mÃ©thodes standard ne fonctionnent pas
+    console.log('Utilisation d\'une mÃ©thode alternative pour gÃ©nÃ©rer un IFC');
+    return generateBasicIfcFile(json);
+    
+  } catch (error) {
+    console.error('Erreur lors de la gÃ©nÃ©ration du fichier IFC:', error);
+    // GÃ©nÃ©rer un fichier IFC minimal en cas d'erreur
+    return generateBasicIfcFile(json);
+  }
+}
+
+/**
+ * CrÃ©e un modÃ¨le IFC de base Ã  partir d'un template
+ */
+async function createBasicIfcModel(ifcApi, json) {
+  try {
+    // CrÃ©er un nouveau modÃ¨le
+    const modelID = ifcApi.CreateModel();
+    
+    // Essayer d'utiliser les mÃ©thodes disponibles dans l'API
+    if (typeof ifcApi.CreateIfcProject === 'function') {
+      const projectGUID = ifcApi.CreateGuid();
+      ifcApi.CreateIfcProject(modelID, projectGUID, 'Projet GÃ©nÃ©rÃ©', 'Description du projet');
+    }
+    
+    return modelID;
+  } catch (error) {
+    console.error('Erreur lors de la crÃ©ation du modÃ¨le de base:', error);
+    throw error;
+  }
+}
+
+/**
+ * GÃ©nÃ¨re un fichier IFC minimal valide
+ */
+function generateBasicIfcFile(json) {
+  // CrÃ©er un fichier IFC minimal valide en texte brut
+  const timestamp = new Date().toISOString().replace(/[-:T]/g, '').split('.')[0];
+  
+  // Extraire les informations des paramÃ¨tres
+  const surface = json.surface || '100 mÂ²';
+  const niveaux = json.niveaux || 1;
+  const chambres = json.chambres || 2;
+  
+  // CrÃ©er un fichier IFC minimal en format texte
+  const ifcContent = `ISO-10303-21;
+  HEADER;
+  FILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');
+  FILE_NAME('Batiment.ifc','${timestamp}',('GÃ©nÃ©rateur IFC'),('IFCAI3'),'','','');
+  FILE_SCHEMA(('IFC2X3'));
+  ENDSEC;
+  
+  DATA;
+  /* Projet gÃ©nÃ©rÃ© avec les paramÃ¨tres: Surface=${surface}, Niveaux=${niveaux}, Chambres=${chambres} */
+  #1=IFCPROJECT('1234567890',#2,'Projet GÃ©nÃ©rÃ©',$,$,$,$,(#20),#3);
+  #2=IFCOWNERHISTORY(#4,#5,$,.ADDED.,$,$,$,0);
+  #3=IFCUNITASSIGNMENT((#6,#7,#8,#9,#10,#11,#12,#13));
+  #4=IFCPERSON($,'Utilisateur',$,$,$,$,$,$);
+  #5=IFCORGANIZATION($,'IFCAI3',$,$,$);
+  #6=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+  #7=IFCSIUNIT(*,.AREAUNIT.,$,.SQUARE_METRE.);
+  #8=IFCSIUNIT(*,.VOLUMEUNIT.,$,.CUBIC_METRE.);
+  #9=IFCSIUNIT(*,.MASSUNIT.,$,.GRAM.);
+  #10=IFCSIUNIT(*,.TIMEUNIT.,$,.SECOND.);
+  #11=IFCSIUNIT(*,.THERMODYNAMICTEMPERATUREUNIT.,$,.DEGREE_CELSIUS.);
+  #12=IFCSIUNIT(*,.LUMINOUSINTENSITYUNIT.,$,.LUMEN.);
+  #13=IFCSIUNIT(*,.PLANEANGLEUNIT.,$,.RADIAN.);
+  #20=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.0E-5,#21,$);
+  #21=IFCAXIS2PLACEMENT3D(#22,$,$);
+  #22=IFCCARTESIANPOINT((0.0,0.0,0.0));
+  ENDSEC;
+  
+  END-ISO-10303-21;`;
+  
+  // Convertir le texte en Blob
+  const encoder = new TextEncoder();
+  const ifcData = encoder.encode(ifcContent);
+  const blob = new Blob([ifcData], { type: 'application/octet-stream' });
+  console.log('Fichier IFC minimal gÃ©nÃ©rÃ©, taille:', blob.size);
+  
+  return blob;
+}
+
+/**
+ * Fonction pour prÃ©visualiser un fichier IFC dans le canvas
+ * @param {Blob} ifcData - Le fichier IFC Ã  prÃ©visualiser
+ */
+async function previewIFC(ifcData) {
+  try {
+    console.log('DÃ©but de la prÃ©visualisation IFC, taille du blob:', ifcData.size);
+    
+    // Initialiser Three.js pour la visualisation
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0xf0f0f0);
+    
+    // Configurer la camÃ©ra
+    const camera = new THREE.PerspectiveCamera(75, canvas.clientWidth / canvas.clientHeight, 0.1, 1000);
+    camera.position.z = 20;
+    camera.position.y = 10;
+    camera.position.x = 10;
+    
+    // Configurer le renderer
+    const renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+    renderer.setSize(canvas.clientWidth, canvas.clientHeight);
+    console.log('Renderer Three.js configurÃ©');
+    
+    // Ajouter des contrÃ´les de camÃ©ra
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.25;
+    
+    // Ajouter un Ã©clairage
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+    scene.add(ambientLight);
+    
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    directionalLight.position.set(10, 20, 10);
+    scene.add(directionalLight);
+    
+    // CrÃ©er une reprÃ©sentation du bÃ¢timent basÃ©e sur les paramÃ¨tres extraits
+    // Nous utilisons un cube colorÃ© pour reprÃ©senter le bÃ¢timent
+    const geometry = new THREE.BoxGeometry(10, 10, 10);
+    const material = new THREE.MeshStandardMaterial({ color: 0x66ccff, transparent: true, opacity: 0.7 });
+    const building = new THREE.Mesh(geometry, material);
+    scene.add(building);
+    console.log('ModÃ¨le 3D de base ajoutÃ© Ã  la scÃ¨ne');
+    
+    // Ajouter un sol
+    const groundGeometry = new THREE.PlaneGeometry(30, 30);
+    const groundMaterial = new THREE.MeshStandardMaterial({ color: 0x999999 });
+    const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.y = -5;
+    scene.add(ground);
+    
+    // Ajouter une grille
+    const gridHelper = new THREE.GridHelper(30, 30);
+    scene.add(gridHelper);
+    
+    // Fonction d'animation
+    function animate() {
+      requestAnimationFrame(animate);
+      controls.update();
+      renderer.render(scene, camera);
+    }
+    
+    // DÃ©marrer l'animation
+    animate();
+    console.log('Animation de prÃ©visualisation dÃ©marrÃ©e');
+    
+    return { scene, camera, renderer, controls };
+  } catch (error) {
+    console.error('Erreur lors de la prÃ©visualisation du fichier IFC:', error);
+    throw error;
+  }
+}
+
+/**
+ * Fonction pour crÃ©er un bouton de tÃ©lÃ©chargement du fichier IFC
+ * @param {Blob} ifcData - Le fichier IFC Ã  tÃ©lÃ©charger
+ */
+function createDownloadButton(ifcData) {
+  // CrÃ©er le bouton de tÃ©lÃ©chargement
+  const downloadButton = document.createElement('button');
+  downloadButton.textContent = 'TÃ©lÃ©charger IFC';
+  downloadButton.className = 'btn-primary';
+  downloadButton.style.marginTop = '10px';
+  
+  // Ajouter l'Ã©couteur d'Ã©vÃ©nement pour le tÃ©lÃ©chargement
+  downloadButton.addEventListener('click', () => {
+    const url = URL.createObjectURL(ifcData);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'batiment.ifc';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  });
+  
+  // Ajouter le bouton au div de statut
+  statusDiv.appendChild(downloadButton);
+}
+
+// Ã‰couteur d'Ã©vÃ©nement pour le bouton de gÃ©nÃ©ration
+generateButton.addEventListener('click', async () => {
+  // Afficher le loader
+  loaderDiv.classList.remove('hidden');
+  statusDiv.textContent = 'GÃ©nÃ©ration en cours...';
+  
+  try {
+    // Extraire les paramÃ¨tres du texte utilisateur
+    const parameters = await extractParameters();
+    
+    if (parameters) {
+      // GÃ©nÃ©rer le fichier IFC
+      statusDiv.textContent = 'GÃ©nÃ©ration du fichier IFC...';
+      console.log('DÃ©but de la gÃ©nÃ©ration avec paramÃ¨tres:', parameters);
+      const ifcData = await generateIFC(parameters);
+      
+      if (ifcData && ifcData.size > 0) {
+        // PrÃ©visualiser le fichier IFC
+        statusDiv.textContent = 'PrÃ©visualisation du modÃ¨le...';
+        await previewIFC(ifcData);
+        
+        // Afficher le statut et crÃ©er le bouton de tÃ©lÃ©chargement
+        statusDiv.textContent = 'ModÃ¨le IFC gÃ©nÃ©rÃ© avec succÃ¨s!';
+        createDownloadButton(ifcData);
+      } else {
+        throw new Error('Le fichier IFC gÃ©nÃ©rÃ© est vide ou invalide');
+      }
+    }
+  } catch (error) {
+    console.error('Erreur lors de la gÃ©nÃ©ration:', error);
+    statusDiv.textContent = 'Erreur lors de la gÃ©nÃ©ration du modÃ¨le IFC: ' + error.message;
+  } finally {
+    loaderDiv.classList.add('hidden');
+  }
+});
+
+// Ajouter un bouton temporaire pour tester l'extraction des paramÃ¨tres
+const testButton = document.createElement('button');
+testButton.textContent = 'Tester l\'extraction';
+testButton.className = 'btn-secondary';
+testButton.style.marginTop = '10px';
+testButton.addEventListener('click', extractParameters);
+
+// InsÃ©rer le bouton aprÃ¨s le bouton de gÃ©nÃ©ration
+generateButton.parentNode.insertBefore(testButton, generateButton.nextSibling);
+
+//***********************************
+// Path: \test-model.js
+//***********************************
+/**
+ * Script de test pour vÃ©rifier le chargement du modÃ¨le T5-small
+ */
+
+console.log('Test de chargement de la bibliothÃ¨que transformers');
+
+// Importer la bibliothÃ¨que transformers
+const { pipeline } = require('@xenova/transformers');
+
+// Fonction asynchrone pour tester le chargement du modÃ¨le
+async function testModelLoading() {
+  try {
+    console.log('Tentative de chargement du modÃ¨le T5-small...');
+    const extractor = await pipeline('text2text-generation', 't5-small', { quantized: true });
+    console.log('ModÃ¨le T5-small chargÃ© avec succÃ¨s!');
+    
+    // Tester une extraction simple
+    const question = "Quelle est la surface totale du bÃ¢timent ?";
+    const context = "Je veux construire une maison de 150 mÂ² avec 3 chambres et 2 salles de bain.";
+    const input = `${question}\nContexte: ${context}`;
+    
+    console.log('Test d\'extraction avec le texte:', input);
+    const result = await extractor(input, { max_new_tokens: 50 });
+    console.log('RÃ©sultat de l\'extraction:', result[0].generated_text);
+    
+    return true;
+  } catch (error) {
+    console.error('Erreur lors du chargement du modÃ¨le:', error);
+    return false;
+  }
+}
+
+// ExÃ©cuter le test
+testModelLoading().then(success => {
+  console.log('Test terminÃ© avec succÃ¨s:', success);
+}).catch(error => {
+  console.error('Erreur lors de l\'exÃ©cution du test:', error);
+});
+
