@@ -21,6 +21,8 @@ header {
   display: flex;
   align-items: center;
   margin-bottom: 30px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid #E5E7EB;
 }
 
 .logo {
@@ -38,6 +40,10 @@ h1 {
   flex-direction: column;
   gap: 15px;
   margin-bottom: 30px;
+  background-color: #F9FAFB;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
 #input {
@@ -50,11 +56,18 @@ h1 {
   resize: vertical;
   font-family: 'Roboto', sans-serif;
   font-size: 16px;
+  transition: border-color 0.2s;
+}
+
+#input:focus {
+  outline: none;
+  border-color: #3B82F6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
 }
 
 /* Boutons */
 .btn-primary {
-  background-color: #3B82F6;
+  background-color: #1E3A8A;
   color: white;
   border: none;
   border-radius: 5px;
@@ -62,12 +75,19 @@ h1 {
   font-size: 16px;
   font-weight: 500;
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition: all 0.2s;
   max-width: 200px;
 }
 
 .btn-primary:hover {
   background-color: #2563EB;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.btn-primary:active {
+  transform: translateY(0);
+  box-shadow: none;
 }
 
 .btn-secondary {
@@ -79,17 +99,30 @@ h1 {
   font-size: 16px;
   font-weight: 500;
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition: all 0.2s;
   max-width: 200px;
 }
 
 .btn-secondary:hover {
   background-color: #4B5563;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.btn-secondary:active {
+  transform: translateY(0);
+  box-shadow: none;
 }
 
 #status {
   min-height: 24px;
   color: #333333;
+  padding: 10px;
+  background-color: #F3F4F6;
+  border-radius: 5px;
+  font-family: monospace;
+  white-space: pre-wrap;
+  overflow-x: auto;
 }
 
 /* Loader */
@@ -100,6 +133,7 @@ h1 {
   border-top: 4px solid #1E3A8A;
   border-radius: 50%;
   animation: spin 1s linear infinite;
+  margin: 10px 0;
 }
 
 @keyframes spin {
@@ -113,18 +147,31 @@ h1 {
 
 /* Viewer */
 #viewer {
-  width: 100%;
-  max-width: 600px;
   margin-top: 20px;
+  background-color: #F9FAFB;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
 #canvas {
   width: 100%;
   max-width: 600px;
   height: 400px;
+  background-color: #FFFFFF;
   border: 1px solid #E5E7EB;
   border-radius: 5px;
-  background-color: #F9FAFB;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+/* Footer */
+footer {
+  margin-top: auto;
+  padding: 20px 0;
+  text-align: center;
+  color: #6B7280;
+  font-size: 14px;
+  border-top: 1px solid #E5E7EB;
 }
 
 /* Responsive */
@@ -146,15 +193,21 @@ h1 {
   header {
     flex-direction: column;
     align-items: flex-start;
-    gap: 10px;
+  }
+  
+  .logo {
+    margin-bottom: 10px;
   }
   
   h1 {
-    font-size: 22px;
+    font-size: 20px;
   }
   
   .btn-primary {
-    width: 100%;
-    max-width: none;
+    max-width: 100%;
+  }
+  
+  #canvas {
+    height: 250px;
   }
 }
